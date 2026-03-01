@@ -89,19 +89,19 @@ swapping `MemoryStore` ↔ `FileStore` without touching source or feature.
 
 ---
 
-### `04_timeseries_scale.py` — Time-series stats + concurrency benchmark
+### `04_timeseries_scale.py` — Time-series stats + scale benchmark
 
 Computes 10 statistical features (mean, std, trend slope, anomaly score,
-spike count) over 502k sensor readings.  Then benchmarks
-`generate()` serial vs. a manual `asyncio.gather` batch workaround to show
-the concurrency bottleneck explicitly.
+spike count) over 502k sensor readings, then benchmarks serial vs. a manual
+`asyncio.gather` workaround (historical — see example 06 for the built-in
+solution).
 
 ```bash
 python examples/04_timeseries_scale.py
 ```
 
 **Interesting parts:** variable-length time series, `JSONSerializer`,
-concurrency workaround pattern.
+numpy-heavy feature extraction.
 
 ---
 
@@ -116,11 +116,37 @@ fix:
 | B | Empty source silently reaches `extract` | Guard `raw.empty` |
 | C | `SourceBundle` is all-or-nothing | `FaultTolerantSource` wrapper |
 | D | Feature class-name collision in store | `feature_name` attribute + custom `_feature_key` |
-| E | `generate()` is serial | `asyncio.gather` over batches |
+| E | `generate()` is serial | now solved — see example 06 |
 
 ```bash
 python examples/05_weak_points.py
 ```
+
+---
+
+### `06_partitioned_generation.py` — Concurrency modes and incremental runs
+
+480 simulated IoT sensors across 6 regional clusters demonstrate every
+`generate()` concurrency mode.  A 5 ms async latency per sensor makes the
+speedups tangible.
+
+```bash
+python examples/06_partitioned_generation.py
+```
+
+Six sections, no external data required:
+
+| Section | What it shows |
+|---------|--------------|
+| A | Serial baseline (`concurrency=1`) |
+| B | Flat concurrency — max throughput, no ordering guarantee |
+| C | `partition_by` — serial within region, concurrent across regions |
+| D | Explicit `partitions` dict — groups from external metadata |
+| E | `overwrite=False` — skip already-stored entities on re-run |
+| F | `on_progress` — real-time progress bar + tqdm integration hint |
+
+**Interesting parts:** `RegionalAPISource` with simulated latency, within-region
+ordering verification, incremental timing comparison, progress bar render.
 
 ---
 

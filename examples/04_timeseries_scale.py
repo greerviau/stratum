@@ -1,4 +1,4 @@
-"""04 — Time-Series Features + Scale / Concurrency
+"""04 — Time-Series Features + Scale
 
 Extracts statistical features from 502k sensor readings across 1 000 sensors,
 then benchmarks sequential vs. manual-concurrent pipeline execution.
@@ -10,9 +10,8 @@ Demonstrates:
   - Variable-length time-series (each sensor has 200–800 readings)
   - Numpy-heavy extract() with linear regression for trend
   - FileStore + JSONSerializer for human-readable output
-  - WEAK POINT: generate() is serial — every entity processed one at a time.
-    When extract() does any I/O (e.g. calls an API), this serialises badly.
-  - MITIGATION: manual asyncio.gather over batches shown at the bottom.
+  - Historical concurrency workaround via asyncio.gather over batches
+    (generate() now has built-in concurrency — see example 06)
 
 Run:
     python examples/04_timeseries_scale.py

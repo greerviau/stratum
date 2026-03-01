@@ -9,7 +9,7 @@ Weak points covered:
   B. Empty source data is the Feature's problem, not the framework's
   C. SourceBundle is all-or-nothing: one sub-source failure drops the entity
   D. Feature store namespace is keyed only on class name (collision risk)
-  E. generate() is serial — no built-in concurrency between entities
+  E. generate() is serial — resolved in current version (see example 06)
 
 Run:
     python examples/05_weak_points.py
@@ -299,15 +299,28 @@ async def demo_name_collision() -> None:
 
 
 async def demo_serial_processing() -> None:
-    print(SEP + "E — generate() processes entities serially\n")
+    print(SEP + "E — generate() serial processing [RESOLVED]\n")
 
     print(
-        "  Each entity is awaited before the next starts.  If extract()\n"
-        "  does real async I/O (API call, DB query, model inference),\n"
-        "  N entities take at least N × latency seconds.\n"
+        "  This was previously a limitation: generate() processed entities\n"
+        "  one at a time, so N entities × latency = N × latency total time.\n"
+        "\n"
+        "  generate() now supports built-in concurrency:\n"
+        "\n"
+        "    # Flat: up to 20 entities concurrently\n"
+        "    await pipeline.generate(entity_ids=ids, concurrency=20)\n"
+        "\n"
+        "    # Partitioned: serial within region, concurrent across regions\n"
+        "    await pipeline.generate(\n"
+        "        entity_ids=ids,\n"
+        "        partition_by=lambda eid: eid.split('_')[0],\n"
+        "        concurrency=8,\n"
+        "    )\n"
+        "\n"
+        "  See examples/06_partitioned_generation.py for a full walkthrough.\n"
     )
 
-    N = 60  # enough to show the difference clearly
+    N = 60
 
     class IoFeature(Feature):
         async def extract(self, raw, context):
@@ -316,30 +329,18 @@ async def demo_serial_processing() -> None:
 
     df = pd.DataFrame({"entity_id": [f"e{i}" for i in range(N)], "x": range(N)})
     entity_ids = df["entity_id"].tolist()
+    pipeline = Pipeline(DataFrameSource(df), IoFeature(), MemoryStore())
 
-    # Sequential
     t0 = time.perf_counter()
-    await Pipeline(DataFrameSource(df), IoFeature(), MemoryStore()).generate(entity_ids)
+    await pipeline.generate(entity_ids=entity_ids)
     t_seq = time.perf_counter() - t0
-    print(f"  Sequential  ({N} entities × 5ms): {t_seq:.2f}s")
-
-    # Manual concurrent batches (workaround)
-    async def concurrent_generate(feature, batch_size=20):
-        batches = [entity_ids[i : i + batch_size] for i in range(0, N, batch_size)]
-        tasks = [Pipeline(DataFrameSource(df), feature, MemoryStore()).generate(b) for b in batches]
-        return await asyncio.gather(*tasks)
 
     t0 = time.perf_counter()
-    await concurrent_generate(IoFeature(), batch_size=20)
+    await pipeline.generate(entity_ids=entity_ids, concurrency=20)
     t_conc = time.perf_counter() - t0
-    print(f"  Concurrent  ({N} entities, batch=20): {t_conc:.2f}s   ({t_seq / t_conc:.1f}x faster)")
 
-    print(
-        "\n  MITIGATION — split entity_ids into batches and run pipelines\n"
-        "  concurrently with asyncio.gather (shown above).\n"
-        "\n  A future Pipeline.generate(concurrency=N) kwarg would make\n"
-        "  this ergonomic without the boilerplate."
-    )
+    print(f"  Serial  ({N} entities × 5ms):      {t_seq:.2f}s")
+    print(f"  Concurrent (concurrency=20):     {t_conc:.2f}s   ({t_seq / t_conc:.1f}x faster)")
 
 
 # ===========================================================================
