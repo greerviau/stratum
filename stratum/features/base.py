@@ -87,6 +87,7 @@ class Feature(ABC):
         raws: list[Any],
         context: dict[str, Any],
         entity_ids: list[str] | None = None,
+        entity_contexts: list[dict[str, Any]] | None = None,
     ) -> list[Any | BaseException]:
         """Extract features for a batch of entities in a single call.
 
@@ -108,6 +109,10 @@ class Feature(ABC):
             entity_ids: Entity identifiers corresponding to each item in
                 *raws*, in the same order.  ``None`` when called outside
                 a ``Pipeline`` context.
+            entity_contexts: Per-entity context dicts (already merged with
+                the shared *context*), one per item in *raws*.  Present when
+                ``generate()`` is called with ``context_fn``.  ``None``
+                otherwise — fall back to *context* for all entities.
 
         Returns:
             List of results or ``BaseException`` instances, one per input.
@@ -115,8 +120,9 @@ class Feature(ABC):
         results: list[Any | BaseException] = []
         for i, raw in enumerate(raws):
             eid = entity_ids[i] if entity_ids is not None else None
+            ctx = entity_contexts[i] if entity_contexts is not None else context
             try:
-                results.append(await self.extract(raw, context, entity_id=eid))
+                results.append(await self.extract(raw, ctx, entity_id=eid))
             except Exception as exc:  # noqa: BLE001
                 results.append(exc)
         return results

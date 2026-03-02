@@ -126,7 +126,11 @@ class BatchEmbedding(Feature):
         return {"embedding": raw @ WEIGHT_MATRIX}
 
     async def extract_batch(
-        self, raws: list[np.ndarray], context: dict, entity_ids: list[str] | None = None
+        self,
+        raws: list[np.ndarray],
+        context: dict,
+        entity_ids: list[str] | None = None,
+        entity_contexts: list[dict] | None = None,
     ) -> list[dict | BaseException]:
         # One "API call" for the whole batch: fixed overhead + tiny per-item cost
         n = len(raws)

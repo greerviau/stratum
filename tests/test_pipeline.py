@@ -621,7 +621,7 @@ class BatchTrackingFeature(Feature):
     async def extract(self, raw, context, entity_id=None):
         return {"v": 1.0}
 
-    async def extract_batch(self, raws, context, entity_ids=None):
+    async def extract_batch(self, raws, context, entity_ids=None, entity_contexts=None):
         self.calls.append(len(raws))
         return [{"v": float(i)} for i in range(len(raws))]
 
@@ -632,7 +632,7 @@ class PartialFailBatchFeature(Feature):
     async def extract(self, raw, context, entity_id=None):
         return {"v": 1.0}
 
-    async def extract_batch(self, raws, context, entity_ids=None):
+    async def extract_batch(self, raws, context, entity_ids=None, entity_contexts=None):
         results = []
         for i, _raw in enumerate(raws):
             if i % 2 == 1:
@@ -648,7 +648,7 @@ class WholeBatchFailFeature(Feature):
     async def extract(self, raw, context, entity_id=None):
         return {"v": 1.0}
 
-    async def extract_batch(self, raws, context, entity_ids=None):
+    async def extract_batch(self, raws, context, entity_ids=None, entity_contexts=None):
         raise RuntimeError("Whole batch exploded")
 
 
@@ -878,4 +878,113 @@ def test_report_repr():
 def test_report_skipped_default_empty():
     report = GenerationReport()
     assert report.skipped == set()
-    assert report.skip_count == 0
+
+
+# ---------------------------------------------------------------------------
+# context_fn tests
+# ---------------------------------------------------------------------------
+
+
+class ContextCaptureFeature(Feature):
+    """Stores the context it received so tests can inspect it."""
+
+    def __init__(self) -> None:
+        self.received: dict[str, dict] = {}
+
+    async def extract(self, raw, context: dict, entity_id: str | None = None) -> dict:
+        self.received[entity_id or "?"] = dict(context)
+        return {"v": 1.0}
+
+
+class ContextCaptureBatchFeature(Feature):
+    """Stores entity_contexts received by extract_batch."""
+
+    def __init__(self) -> None:
+        self.received_contexts: list[dict] | None = None
+
+    async def extract(self, raw, context: dict, entity_id: str | None = None) -> dict:
+        return {"v": 1.0}
+
+    async def extract_batch(self, raws, context, entity_ids=None, entity_contexts=None):
+        self.received_contexts = list(entity_contexts) if entity_contexts is not None else None
+        return [{"v": 1.0}] * len(raws)
+
+
+@pytest.mark.asyncio
+async def test_context_fn_per_entity_context_received(df):
+    """context_fn result should be visible in Feature.extract for each entity."""
+    feature = ContextCaptureFeature()
+    pipeline = Pipeline(source=DataFrameSource(df), feature=feature, store=MemoryStore())
+
+    labels = {"u1": "premium", "u2": "standard"}
+    await pipeline.generate(
+        entity_ids=["u1", "u2"],
+        context={"shared": True},
+        context_fn=lambda eid: {"tier": labels[eid]},
+    )
+
+    assert feature.received["u1"] == {"shared": True, "tier": "premium"}
+    assert feature.received["u2"] == {"shared": True, "tier": "standard"}
+
+
+@pytest.mark.asyncio
+async def test_context_fn_overrides_shared_context(df):
+    """Entity-specific values from context_fn should shadow shared context keys."""
+    feature = ContextCaptureFeature()
+    pipeline = Pipeline(source=DataFrameSource(df), feature=feature, store=MemoryStore())
+
+    await pipeline.generate(
+        entity_ids=["u1", "u2"],
+        context={"key": "shared_value"},
+        context_fn=lambda eid: {"key": f"entity_{eid}"},
+    )
+
+    assert feature.received["u1"]["key"] == "entity_u1"
+    assert feature.received["u2"]["key"] == "entity_u2"
+
+
+@pytest.mark.asyncio
+async def test_context_fn_without_shared_context(df):
+    """context_fn should work even when no shared context is provided."""
+    feature = ContextCaptureFeature()
+    pipeline = Pipeline(source=DataFrameSource(df), feature=feature, store=MemoryStore())
+
+    await pipeline.generate(
+        entity_ids=["u1"],
+        context_fn=lambda eid: {"entity_label": eid.upper()},
+    )
+
+    assert feature.received["u1"] == {"entity_label": "U1"}
+
+
+@pytest.mark.asyncio
+async def test_context_fn_with_batch_size_passes_entity_contexts(wide_df):
+    """With batch_size > 1, context_fn results should reach extract_batch as entity_contexts."""
+    feature = ContextCaptureBatchFeature()
+    entity_ids = [f"e{i}" for i in range(4)]
+    pipeline = Pipeline(source=DataFrameSource(wide_df), feature=feature, store=MemoryStore())
+
+    await pipeline.generate(
+        entity_ids=entity_ids,
+        context={"shared": 1},
+        context_fn=lambda eid: {"label": eid},
+        batch_size=4,
+    )
+
+    assert feature.received_contexts is not None
+    assert len(feature.received_contexts) == 4
+    for i, ctx in enumerate(feature.received_contexts):
+        assert ctx["shared"] == 1
+        assert ctx["label"] == entity_ids[i]
+
+
+@pytest.mark.asyncio
+async def test_context_fn_none_passes_shared_context_to_batch(wide_df):
+    """Without context_fn, entity_contexts should be None in extract_batch."""
+    feature = ContextCaptureBatchFeature()
+    entity_ids = [f"e{i}" for i in range(3)]
+    pipeline = Pipeline(source=DataFrameSource(wide_df), feature=feature, store=MemoryStore())
+
+    await pipeline.generate(entity_ids=entity_ids, context={"shared": 1}, batch_size=3)
+
+    assert feature.received_contexts is None

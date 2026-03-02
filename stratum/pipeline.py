@@ -93,6 +93,7 @@ class Pipeline:
         self,
         entity_id: str,
         context: dict[str, Any],
+        context_fn: Callable[[str], dict[str, Any]] | None,
         overwrite: bool,
         report: GenerationReport,
         feature_name: str,
@@ -104,9 +105,10 @@ class Pipeline:
                 report.skipped.add(entity_id)
                 return
 
+            entity_ctx = {**context, **context_fn(entity_id)} if context_fn else context
             raw = await self.source.read(entity_id=entity_id)
             raw = await self.feature.pre_extract(raw)
-            result = await self.feature.extract(raw, context, entity_id=entity_id)
+            result = await self.feature.extract(raw, entity_ctx, entity_id=entity_id)
             result = await self.feature.post_extract(result)
             errors = await self.feature.validate(result)
 
@@ -127,6 +129,7 @@ class Pipeline:
         self,
         entity_ids: list[str],
         context: dict[str, Any],
+        context_fn: Callable[[str], dict[str, Any]] | None,
         overwrite: bool,
         report: GenerationReport,
         feature_name: str,
@@ -198,9 +201,14 @@ class Pipeline:
             return
 
         # --- 4. Batch extract ---
+        entity_contexts: list[dict[str, Any]] | None = (
+            [{**context, **context_fn(eid)} for eid in valid_ids]
+            if context_fn
+            else None
+        )
         try:
             batch_results: list[Any] = await self.feature.extract_batch(
-                valid_raws, context, entity_ids=valid_ids
+                valid_raws, context, entity_ids=valid_ids, entity_contexts=entity_contexts
             )
         except Exception as exc:
             # Whole-batch failure: attribute to every entity in this batch.
@@ -245,6 +253,7 @@ class Pipeline:
         *,
         partitions: dict[str, list[str]] | None = None,
         partition_by: Callable[[str], Hashable] | None = None,
+        context_fn: Callable[[str], dict[str, Any]] | None = None,
         concurrency: int = 1,
         batch_size: int = 1,
         overwrite: bool = True,
@@ -292,6 +301,11 @@ class Pipeline:
                 exclusive with *partitions*.
             context: Arbitrary dict forwarded to ``Feature.extract`` /
                 ``Feature.extract_batch``.  Defaults to an empty dict.
+            context_fn: Optional callable ``(entity_id) -> dict`` that
+                returns per-entity context additions.  The returned dict is
+                merged on top of *context* (``{**context, **context_fn(eid)}``),
+                so entity-specific values shadow shared ones.  For batch
+                extraction, the merged dicts are passed as *entity_contexts*.
             partitions: Pre-built partition mapping
                 ``{partition_key: [entity_ids]}``.  Mutually exclusive with
                 *entity_ids*.
@@ -369,7 +383,7 @@ class Pipeline:
                 if batch_size == 1:
                     for entity_id in entities:
                         await self._process_entity(
-                            entity_id, context, overwrite, report, feature_name, store_results
+                            entity_id, context, context_fn, overwrite, report, feature_name, store_results
                         )
                         completed += 1
                         if on_progress is not None:
@@ -387,6 +401,7 @@ class Pipeline:
                         await self._process_batch(
                             sub_batch,
                             context,
+                            context_fn,
                             overwrite,
                             report,
                             feature_name,

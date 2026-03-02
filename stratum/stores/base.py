@@ -16,10 +16,21 @@ class FeatureStore(ABC):
     All operations are keyed by ``(feature, entity_id)`` where the feature
     type name is used as the namespace.
 
-    Implementations must provide ``write``, ``read``, ``exists``, and
-    ``delete``.  All are async to allow non-blocking I/O.
+    Only ``read`` is abstract — subclasses must implement it.  The remaining
+    operations (``write``, ``exists``, ``delete``) have default implementations
+    that raise ``NotImplementedError``, so read-only stores (e.g. a production
+    serving layer that you can query but not write to) only need to override
+    ``read``.  Full read-write stores should override all four.
 
-    Example implementation::
+    All methods are async to allow non-blocking I/O.
+
+    Minimal read-only example::
+
+        class RemoteFeatureStore(FeatureStore):
+            async def read(self, feature, entity_id):
+                return await fetch_from_remote(feature, entity_id)
+
+    Full read-write example::
 
         class RedisStore(FeatureStore):
             def __init__(self, redis_client):
@@ -46,7 +57,6 @@ class FeatureStore(ABC):
                     raise KeyError(key)
     """
 
-    @abstractmethod
     async def write(self, feature: Feature, entity_id: str, data: Any) -> None:
         """Persist a feature value for an entity.
 
@@ -56,9 +66,12 @@ class FeatureStore(ABC):
             data: Extracted feature value to store.
 
         Raises:
+            NotImplementedError: If this store is read-only.
             StoreError: If the write operation fails.
         """
-        ...
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support write operations."
+        )
 
     @abstractmethod
     async def read(self, feature: Feature, entity_id: str) -> Any:
@@ -77,7 +90,6 @@ class FeatureStore(ABC):
         """
         ...
 
-    @abstractmethod
     async def exists(self, feature: Feature, entity_id: str) -> bool:
         """Check whether a feature value exists for an entity.
 
@@ -87,10 +99,14 @@ class FeatureStore(ABC):
 
         Returns:
             ``True`` if a value is stored, ``False`` otherwise.
-        """
-        ...
 
-    @abstractmethod
+        Raises:
+            NotImplementedError: If this store does not support existence checks.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support exists operations."
+        )
+
     async def delete(self, feature: Feature, entity_id: str) -> None:
         """Delete the stored feature value for an entity.
 
@@ -99,10 +115,13 @@ class FeatureStore(ABC):
             entity_id: Unique entity identifier.
 
         Raises:
+            NotImplementedError: If this store does not support deletion.
             KeyError: If no value exists for ``(feature, entity_id)``.
             StoreError: If the delete operation fails.
         """
-        ...
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support delete operations."
+        )
 
     def _feature_key(self, feature: Feature) -> str:
         """Return a stable string namespace key for a feature instance.

@@ -10,6 +10,7 @@ import pytest
 from stratum.features.base import Feature
 from stratum.serializers import JSONSerializer, NumpySerializer
 from stratum.stores import FileStore, MemoryStore
+from stratum.stores.base import FeatureStore
 
 # Optional parquet deps
 try:
@@ -27,12 +28,12 @@ except ImportError:
 
 
 class DummyFeature(Feature):
-    async def extract(self, raw, context):
+    async def extract(self, raw, context, entity_id=None):
         return raw
 
 
 class AnotherFeature(Feature):
-    async def extract(self, raw, context):
+    async def extract(self, raw, context, entity_id=None):
         return raw
 
 
@@ -254,3 +255,54 @@ class TestParquetStore:
             store = ParquetStore(tmpdir)
             with pytest.raises(KeyError):
                 await store.read(feature, "missing")
+
+
+# ---------------------------------------------------------------------------
+# FeatureStore base class — default method behaviour
+# ---------------------------------------------------------------------------
+
+
+class ReadOnlyStore(FeatureStore):
+    """Minimal store that only implements read — no write/exists/delete."""
+
+    def __init__(self, data: dict):
+        self._data = data
+
+    async def read(self, feature, entity_id):
+        key = (type(feature).__name__, entity_id)
+        if key not in self._data:
+            raise KeyError(entity_id)
+        return self._data[key]
+
+
+@pytest.mark.asyncio
+async def test_read_only_store_can_be_instantiated():
+    """A store that only overrides read() should be constructable."""
+    store = ReadOnlyStore({("DummyFeature", "e1"): {"v": 42}})
+    feature = DummyFeature()
+    result = await store.read(feature, "e1")
+    assert result == {"v": 42}
+
+
+@pytest.mark.asyncio
+async def test_read_only_store_write_raises_not_implemented():
+    store = ReadOnlyStore({})
+    feature = DummyFeature()
+    with pytest.raises(NotImplementedError, match="write"):
+        await store.write(feature, "e1", {"v": 1})
+
+
+@pytest.mark.asyncio
+async def test_read_only_store_exists_raises_not_implemented():
+    store = ReadOnlyStore({})
+    feature = DummyFeature()
+    with pytest.raises(NotImplementedError, match="exists"):
+        await store.exists(feature, "e1")
+
+
+@pytest.mark.asyncio
+async def test_read_only_store_delete_raises_not_implemented():
+    store = ReadOnlyStore({})
+    feature = DummyFeature()
+    with pytest.raises(NotImplementedError, match="delete"):
+        await store.delete(feature, "e1")
