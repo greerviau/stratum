@@ -547,6 +547,213 @@ async def test_generate_raises_if_concurrency_less_than_one(df):
         await pipeline.generate(entity_ids=["u1"], concurrency=0)
 
 
+@pytest.mark.asyncio
+async def test_generate_raises_if_batch_size_less_than_one(df):
+    pipeline = Pipeline(source=DataFrameSource(df), feature=MeanFeature(), store=MemoryStore())
+    with pytest.raises(ValueError, match="batch_size"):
+        await pipeline.generate(entity_ids=["u1"], batch_size=0)
+
+
+# ---------------------------------------------------------------------------
+# batch_size / extract_batch tests
+# ---------------------------------------------------------------------------
+
+
+class BatchTrackingFeature(Feature):
+    """Records how extract_batch is called so tests can inspect batch sizes."""
+
+    def __init__(self) -> None:
+        self.calls: list[int] = []  # sizes of each extract_batch call
+
+    async def extract(self, raw, context):
+        return {"v": 1.0}
+
+    async def extract_batch(self, raws, context):
+        self.calls.append(len(raws))
+        return [{"v": float(i)} for i in range(len(raws))]
+
+
+class PartialFailBatchFeature(Feature):
+    """extract_batch returns an exception for every other entity."""
+
+    async def extract(self, raw, context):
+        return {"v": 1.0}
+
+    async def extract_batch(self, raws, context):
+        results = []
+        for i, _raw in enumerate(raws):
+            if i % 2 == 1:
+                results.append(ValueError(f"Simulated failure for item {i}"))
+            else:
+                results.append({"v": float(i)})
+        return results
+
+
+class WholeBatchFailFeature(Feature):
+    """extract_batch always raises, failing the entire batch."""
+
+    async def extract(self, raw, context):
+        return {"v": 1.0}
+
+    async def extract_batch(self, raws, context):
+        raise RuntimeError("Whole batch exploded")
+
+
+@pytest.mark.asyncio
+async def test_batch_extract_called_once_per_batch(wide_df):
+    """extract_batch should be called once per batch, not once per entity."""
+    feature = BatchTrackingFeature()
+    pipeline = Pipeline(source=DataFrameSource(wide_df), feature=feature, store=MemoryStore())
+
+    ids = [f"u{i}" for i in range(1, 7)]
+    report = await pipeline.generate(entity_ids=ids, batch_size=3)
+
+    assert report.success_count == 6
+    # 6 entities / batch_size 3 → 2 calls
+    assert len(feature.calls) == 2
+    assert all(n == 3 for n in feature.calls)
+
+
+@pytest.mark.asyncio
+async def test_batch_extract_correct_results(wide_df):
+    """Results from extract_batch should be stored per entity correctly."""
+    pipeline = Pipeline(
+        source=DataFrameSource(wide_df),
+        feature=BatchTrackingFeature(),
+        store=MemoryStore(),
+    )
+    ids = [f"u{i}" for i in range(1, 7)]
+    report = await pipeline.generate(entity_ids=ids, batch_size=6)
+
+    assert report.success_count == 6
+    assert report.failure_count == 0
+
+
+@pytest.mark.asyncio
+async def test_batch_extract_partial_failure_isolated(wide_df):
+    """A per-slot BaseException in extract_batch should fail only that entity."""
+    pipeline = Pipeline(
+        source=DataFrameSource(wide_df),
+        feature=PartialFailBatchFeature(),
+        store=MemoryStore(),
+    )
+    ids = [f"u{i}" for i in range(1, 7)]
+    report = await pipeline.generate(entity_ids=ids, batch_size=6)
+
+    # Items at index 0, 2, 4 succeed; 1, 3, 5 fail
+    assert report.success_count == 3
+    assert report.failure_count == 3
+
+
+@pytest.mark.asyncio
+async def test_batch_extract_whole_batch_failure(wide_df):
+    """If extract_batch raises, all entities in that batch are marked failed."""
+    pipeline = Pipeline(
+        source=DataFrameSource(wide_df),
+        feature=WholeBatchFailFeature(),
+        store=MemoryStore(),
+    )
+    ids = [f"u{i}" for i in range(1, 7)]
+    report = await pipeline.generate(entity_ids=ids, batch_size=6)
+
+    assert report.success_count == 0
+    assert report.failure_count == 6
+
+
+@pytest.mark.asyncio
+async def test_batch_extract_default_falls_back_to_extract(df):
+    """The default extract_batch calls extract() per item — same results."""
+    # MeanFeature only implements extract(), so extract_batch uses the default
+    pipeline = Pipeline(source=DataFrameSource(df), feature=MeanFeature(), store=MemoryStore())
+
+    r_individual = await pipeline.generate(entity_ids=["u1", "u2"])
+    store2 = MemoryStore()
+    pipeline2 = Pipeline(source=DataFrameSource(df), feature=MeanFeature(), store=store2)
+    r_batch = await pipeline2.generate(entity_ids=["u1", "u2"], batch_size=2)
+
+    assert r_individual.succeeded["u1"] == r_batch.succeeded["u1"]
+    assert r_individual.succeeded["u2"] == r_batch.succeeded["u2"]
+
+
+@pytest.mark.asyncio
+async def test_batch_extract_default_per_item_failure_isolated(df):
+    """Default extract_batch wraps individual failures — other items still succeed."""
+    pipeline = Pipeline(source=DataFrameSource(df), feature=MeanFeature(), store=MemoryStore())
+    # u_missing will fail; u1 should still succeed
+    report = await pipeline.generate(entity_ids=["u1", "u_missing"], batch_size=2)
+
+    assert "u1" in report.succeeded
+    assert "u_missing" in report.failed
+
+
+@pytest.mark.asyncio
+async def test_batch_size_with_concurrency(wide_df):
+    """batch_size and concurrency can be combined: concurrent batches of N."""
+    feature = BatchTrackingFeature()
+    pipeline = Pipeline(source=DataFrameSource(wide_df), feature=feature, store=MemoryStore())
+
+    ids = [f"u{i}" for i in range(1, 7)]
+    report = await pipeline.generate(entity_ids=ids, batch_size=2, concurrency=3)
+
+    assert report.success_count == 6
+    # 6 entities / batch_size 2 → 3 batches, each called once
+    assert len(feature.calls) == 3
+
+
+@pytest.mark.asyncio
+async def test_batch_size_with_overwrite_false(wide_df):
+    """overwrite=False skips in batch mode; remaining entities still processed."""
+    store = MemoryStore()
+    pipeline = Pipeline(source=DataFrameSource(wide_df), feature=MeanFeature(), store=store)
+
+    # Pre-populate u1, u2
+    await pipeline.generate(entity_ids=["u1", "u2"])
+
+    ids = [f"u{i}" for i in range(1, 7)]
+    report = await pipeline.generate(entity_ids=ids, batch_size=3, overwrite=False)
+
+    assert report.skip_count == 2
+    assert report.success_count == 4
+
+
+@pytest.mark.asyncio
+async def test_batch_size_on_progress_fires_per_entity(wide_df):
+    """on_progress should fire once per entity, not once per batch."""
+    calls: list[int] = []
+    pipeline = Pipeline(
+        source=DataFrameSource(wide_df), feature=BatchTrackingFeature(), store=MemoryStore()
+    )
+    ids = [f"u{i}" for i in range(1, 7)]
+    await pipeline.generate(
+        entity_ids=ids,
+        batch_size=3,
+        on_progress=lambda c, t, _: calls.append(c),
+    )
+
+    assert len(calls) == 6
+    assert calls[-1] == 6
+
+
+@pytest.mark.asyncio
+async def test_batch_size_with_partition_by(wide_df):
+    """batch_size should work within partitioned mode."""
+    feature = BatchTrackingFeature()
+    pipeline = Pipeline(source=DataFrameSource(wide_df), feature=feature, store=MemoryStore())
+
+    ids = [f"u{i}" for i in range(1, 7)]
+    # 2 partitions (odd/even), 3 entities each, batch_size=2 → 2 sub-batches per partition
+    report = await pipeline.generate(
+        entity_ids=ids,
+        partition_by=lambda eid: int(eid[1:]) % 2,
+        concurrency=2,
+        batch_size=2,
+    )
+
+    assert report.success_count == 6
+    # Each partition has 3 entities, batched by 2 → ceil(3/2)=2 calls per partition × 2 partitions
+    assert len(feature.calls) == 4
+
+
 # ---------------------------------------------------------------------------
 # retrieve() / retrieve_batch() tests
 # ---------------------------------------------------------------------------

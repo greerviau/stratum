@@ -31,7 +31,7 @@ Priority tiers: **P0** = blocking real use, **P1** = significant gap, **P2** = q
 
 ## P1 — Significant feature gaps
 
-- [ ] **Batch extract** — Add an optional `async extract_batch(raws: list[Any], context: dict) -> list[Any]` method to `Feature`. When defined, `generate()` should collect a batch of raw reads and call it once instead of N times. Critical for ML model inference and bulk DB queries.
+- [x] **Batch extract** — Add an optional `async extract_batch(raws: list[Any], context: dict) -> list[Any]` method to `Feature`. When defined, `generate()` should collect a batch of raw reads and call it once instead of N times. Critical for ML model inference and bulk DB queries.
 
 - [ ] **Multi-feature pipeline** — Support running multiple `Feature` instances against a single `DataSource` in one `Pipeline`. The source is read once; each feature gets the same raw data. Avoids re-reading the source N times for N features from the same origin.
 

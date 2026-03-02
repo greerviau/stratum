@@ -77,6 +77,38 @@ class Feature(ABC):
         """
         return result
 
+    async def extract_batch(
+        self, raws: list[Any], context: dict[str, Any]
+    ) -> list[Any | BaseException]:
+        """Extract features for a batch of entities in a single call.
+
+        Override this to enable vectorised or batch-API computation
+        (e.g. ML model inference, bulk database queries, batch embedding
+        APIs).  The default implementation calls ``extract()`` for each
+        item individually and is therefore equivalent to — but no faster
+        than — the per-entity path.
+
+        Return one element per input, in the same order.  Individual items
+        may be ``BaseException`` instances to signal per-entity failure
+        without aborting the rest of the batch; the pipeline will record
+        those entities as failed and continue.
+
+        Args:
+            raws: Pre-processed raw data for each entity in the batch
+                (already passed through ``pre_extract``).
+            context: Shared context dict forwarded from ``generate()``.
+
+        Returns:
+            List of results or ``BaseException`` instances, one per input.
+        """
+        results: list[Any | BaseException] = []
+        for raw in raws:
+            try:
+                results.append(await self.extract(raw, context))
+            except Exception as exc:  # noqa: BLE001
+                results.append(exc)
+        return results
+
     async def validate(self, result: Any) -> list[str]:
         """Validate the (post-processed) extraction result.
 

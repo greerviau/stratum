@@ -121,6 +121,118 @@ class Pipeline:
                 f"entity '{entity_id}': {type(exc).__name__}: {exc}"
             ]
 
+    async def _process_batch(
+        self,
+        entity_ids: list[str],
+        context: dict[str, Any],
+        overwrite: bool,
+        report: GenerationReport,
+        feature_name: str,
+        on_entity_done: Callable[[], None] | None,
+    ) -> None:
+        """Process a batch of entities with a single ``extract_batch`` call.
+
+        Reads all entity raws concurrently, then delegates to
+        ``Feature.extract_batch`` for vectorised computation.  Per-entity
+        failure isolation is preserved: a ``BaseException`` returned for an
+        individual slot is recorded as that entity's failure without
+        affecting the rest of the batch.
+        """
+        # --- 1. Overwrite check: separate skips from entities to process ---
+        to_process: list[str] = []
+        for entity_id in entity_ids:
+            try:
+                if not overwrite and await self.store.exists(self.feature, entity_id):
+                    report.skipped.add(entity_id)
+                    if on_entity_done is not None:
+                        on_entity_done()
+                    continue
+            except Exception as exc:
+                report.failed[entity_id] = [
+                    f"Unhandled exception in pipeline for feature '{feature_name}', "
+                    f"entity '{entity_id}': {type(exc).__name__}: {exc}"
+                ]
+                if on_entity_done is not None:
+                    on_entity_done()
+                continue
+            to_process.append(entity_id)
+
+        if not to_process:
+            return
+
+        # --- 2. Concurrent reads (return_exceptions preserves per-entity errors) ---
+        raw_results: list[Any] = await asyncio.gather(
+            *[self.source.read(entity_id=eid) for eid in to_process],
+            return_exceptions=True,
+        )
+
+        # --- 3. Pre-extract per entity; exclude read failures ---
+        valid_ids: list[str] = []
+        valid_raws: list[Any] = []
+
+        for entity_id, raw in zip(to_process, raw_results, strict=True):
+            if isinstance(raw, BaseException):
+                report.failed[entity_id] = [
+                    f"Unhandled exception in pipeline for feature '{feature_name}', "
+                    f"entity '{entity_id}': {type(raw).__name__}: {raw}"
+                ]
+                if on_entity_done is not None:
+                    on_entity_done()
+                continue
+            try:
+                pre = await self.feature.pre_extract(raw)
+                valid_ids.append(entity_id)
+                valid_raws.append(pre)
+            except Exception as exc:
+                report.failed[entity_id] = [
+                    f"Unhandled exception in pipeline for feature '{feature_name}', "
+                    f"entity '{entity_id}': {type(exc).__name__}: {exc}"
+                ]
+                if on_entity_done is not None:
+                    on_entity_done()
+
+        if not valid_ids:
+            return
+
+        # --- 4. Batch extract ---
+        try:
+            batch_results: list[Any] = await self.feature.extract_batch(valid_raws, context)
+        except Exception as exc:
+            # Whole-batch failure: attribute to every entity in this batch.
+            for entity_id in valid_ids:
+                report.failed[entity_id] = [
+                    f"Unhandled exception in pipeline for feature '{feature_name}', "
+                    f"entity '{entity_id}': {type(exc).__name__}: {exc}"
+                ]
+                if on_entity_done is not None:
+                    on_entity_done()
+            return
+
+        # --- 5. Post-extract, validate, write — per entity ---
+        for entity_id, result in zip(valid_ids, batch_results, strict=True):
+            if isinstance(result, BaseException):
+                report.failed[entity_id] = [
+                    f"Unhandled exception in pipeline for feature '{feature_name}', "
+                    f"entity '{entity_id}': {type(result).__name__}: {result}"
+                ]
+            else:
+                try:
+                    result = await self.feature.post_extract(result)
+                    errors = await self.feature.validate(result)
+                    if errors:
+                        report.failed[entity_id] = errors
+                    else:
+                        await self.store.write(self.feature, entity_id, result)
+                        report.succeeded[entity_id] = result
+                except Exception as exc:
+                    report.failed[entity_id] = [
+                        f"Unhandled exception in pipeline for feature '{feature_name}', "
+                        f"entity '{entity_id}': {type(exc).__name__}: {exc}"
+                    ]
+
+            if on_entity_done is not None:
+                on_entity_done()
+
     async def generate(
         self,
         entity_ids: list[str] | None = None,
@@ -129,6 +241,7 @@ class Pipeline:
         partitions: dict[str, list[str]] | None = None,
         partition_by: Callable[[str], Hashable] | None = None,
         concurrency: int = 1,
+        batch_size: int = 1,
         overwrite: bool = True,
         on_progress: Callable[[int, int, GenerationReport], None] | None = None,
     ) -> GenerationReport:
@@ -138,10 +251,16 @@ class Pipeline:
         in order.  Across partitions, up to *concurrency* partitions run
         concurrently.
 
+        When *batch_size* > 1, entities are grouped into sub-batches and
+        ``Feature.extract_batch`` is called once per sub-batch instead of
+        once per entity.  This enables vectorised computation (ML inference,
+        batch API calls, bulk DB queries) that is dramatically faster than
+        N individual calls.
+
         Three concurrency modes:
 
         1. **Flat** (default) — pass ``entity_ids``; ``concurrency`` caps how
-           many entities run at once::
+           many entities (or batches, when *batch_size* > 1) run at once::
 
                await pipeline.generate(entity_ids=ids, concurrency=16)
 
@@ -165,24 +284,26 @@ class Pipeline:
         Args:
             entity_ids: Flat list of entity IDs to process.  Mutually
                 exclusive with *partitions*.
-            context: Arbitrary dict forwarded to ``Feature.extract``.
-                Defaults to an empty dict.
+            context: Arbitrary dict forwarded to ``Feature.extract`` /
+                ``Feature.extract_batch``.  Defaults to an empty dict.
             partitions: Pre-built partition mapping
                 ``{partition_key: [entity_ids]}``.  Mutually exclusive with
                 *entity_ids*.
             partition_by: Callable that maps an entity ID to a partition key.
                 Requires *entity_ids*; cannot be combined with *partitions*.
-            concurrency: Maximum number of partitions (or individual entities
-                in flat mode) that run concurrently.  Defaults to ``1``
-                (fully serial — identical to the previous behaviour).
+            concurrency: Maximum number of partitions (or batches in flat
+                mode) that run concurrently.  Defaults to ``1`` (fully
+                serial).
+            batch_size: Number of entities to collect before calling
+                ``Feature.extract_batch`` once.  ``1`` (default) uses the
+                per-entity ``extract`` path unchanged.  In flat mode,
+                *concurrency* controls how many batches run in parallel.
             overwrite: When ``False``, entities that already have a stored
                 value are skipped without re-extracting.  Skipped entities
                 appear in ``GenerationReport.skipped``.  Defaults to ``True``.
             on_progress: Optional sync callback invoked after each entity
                 resolves (succeeds, fails, or is skipped).  Receives
                 ``(completed: int, total: int, report: GenerationReport)``.
-                Useful for wiring in tqdm, logging, or custom telemetry
-                without coupling stratum to any specific library.
 
         Returns:
             ``GenerationReport`` collecting every success, failure, and skip.
@@ -199,6 +320,8 @@ class Pipeline:
             raise ValueError("'partition_by' cannot be combined with explicit 'partitions'.")
         if concurrency < 1:
             raise ValueError(f"'concurrency' must be >= 1, got {concurrency}.")
+        if batch_size < 1:
+            raise ValueError(f"'batch_size' must be >= 1, got {batch_size}.")
 
         if context is None:
             context = {}
@@ -212,9 +335,14 @@ class Pipeline:
             for eid in entity_ids:  # type: ignore[union-attr]
                 key = partition_by(eid)
                 partition_map.setdefault(key, []).append(eid)
+        elif batch_size > 1:
+            # Flat batch mode: each chunk of batch_size entities becomes a
+            # partition so concurrency controls how many batches run at once.
+            ids = entity_ids  # type: ignore[union-attr]
+            partition_map = {i: ids[i : i + batch_size] for i in range(0, len(ids), batch_size)}
         else:
-            # Flat mode: one partition per entity so the semaphore directly
-            # controls max concurrency at the individual-entity level.
+            # Flat entity mode: one partition per entity so the semaphore
+            # directly controls max concurrency at the individual-entity level.
             partition_map = {eid: [eid] for eid in entity_ids}  # type: ignore[union-attr]
 
         total = sum(len(v) for v in partition_map.values())
@@ -226,11 +354,27 @@ class Pipeline:
         async def run_partition(entities: list[str]) -> None:
             nonlocal completed
             async with semaphore:
-                for entity_id in entities:
-                    await self._process_entity(entity_id, context, overwrite, report, feature_name)
-                    completed += 1
-                    if on_progress is not None:
-                        on_progress(completed, total, report)
+                if batch_size == 1:
+                    for entity_id in entities:
+                        await self._process_entity(
+                            entity_id, context, overwrite, report, feature_name
+                        )
+                        completed += 1
+                        if on_progress is not None:
+                            on_progress(completed, total, report)
+                else:
+
+                    def on_entity_done() -> None:
+                        nonlocal completed
+                        completed += 1
+                        if on_progress is not None:
+                            on_progress(completed, total, report)
+
+                    for i in range(0, len(entities), batch_size):
+                        sub_batch = entities[i : i + batch_size]
+                        await self._process_batch(
+                            sub_batch, context, overwrite, report, feature_name, on_entity_done
+                        )
 
         await asyncio.gather(*[run_partition(entities) for entities in partition_map.values()])
         return report
