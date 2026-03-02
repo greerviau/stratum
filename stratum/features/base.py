@@ -35,7 +35,9 @@ class Feature(ABC):
     schema: ClassVar[FeatureSchema | None] = None
 
     @abstractmethod
-    async def extract(self, raw: Any, context: dict) -> Any:
+    async def extract(
+        self, raw: Any, context: dict, entity_id: str | None = None
+    ) -> Any:
         """Extract the feature value from raw source data.
 
         Args:
@@ -43,6 +45,9 @@ class Feature(ABC):
                 on the source implementation.
             context: Arbitrary dict supplied by the caller (e.g. timestamps,
                 model version, experiment flags).
+            entity_id: The identifier of the entity being processed.  Useful
+                for logging, per-entity branching, or keying external lookups.
+                ``None`` when called outside a ``Pipeline`` context.
 
         Returns:
             Extracted feature value.  Should conform to ``schema`` if set.
@@ -78,7 +83,10 @@ class Feature(ABC):
         return result
 
     async def extract_batch(
-        self, raws: list[Any], context: dict[str, Any]
+        self,
+        raws: list[Any],
+        context: dict[str, Any],
+        entity_ids: list[str] | None = None,
     ) -> list[Any | BaseException]:
         """Extract features for a batch of entities in a single call.
 
@@ -97,14 +105,18 @@ class Feature(ABC):
             raws: Pre-processed raw data for each entity in the batch
                 (already passed through ``pre_extract``).
             context: Shared context dict forwarded from ``generate()``.
+            entity_ids: Entity identifiers corresponding to each item in
+                *raws*, in the same order.  ``None`` when called outside
+                a ``Pipeline`` context.
 
         Returns:
             List of results or ``BaseException`` instances, one per input.
         """
         results: list[Any | BaseException] = []
-        for raw in raws:
+        for i, raw in enumerate(raws):
+            eid = entity_ids[i] if entity_ids is not None else None
             try:
-                results.append(await self.extract(raw, context))
+                results.append(await self.extract(raw, context, entity_id=eid))
             except Exception as exc:  # noqa: BLE001
                 results.append(exc)
         return results

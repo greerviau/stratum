@@ -25,6 +25,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
 from stratum import Pipeline
 from stratum.features.base import Feature
 from stratum.schema import FeatureSchema, types
@@ -58,7 +59,7 @@ class SensorStats(Feature):
         }
     )
 
-    async def extract(self, raw: pd.DataFrame, context: dict) -> dict:
+    async def extract(self, raw: pd.DataFrame, context: dict, entity_id: str | None = None) -> dict:
         if raw.empty:
             raise ValueError("No readings for this sensor")
 
@@ -156,7 +157,7 @@ async def main() -> None:
 
     # Spot-check
     sample = await pipeline.retrieve("sensor_0000")
-    print(f"\nsensor_0000:")
+    print("\nsensor_0000:")
     for k, v in sample.items():
         print(f"  {k:<16} {v}")
 
@@ -174,7 +175,7 @@ async def main() -> None:
 
     # Simulate a feature that does 2 ms of async I/O per entity
     class SlowFeature(Feature):
-        async def extract(self, raw, context):
+        async def extract(self, raw, context, entity_id=None):
             await asyncio.sleep(0.002)  # simulate async API call
             return {"value": 1.0}
 

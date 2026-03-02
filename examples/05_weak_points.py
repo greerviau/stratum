@@ -22,8 +22,8 @@ import math
 import time
 from typing import Any
 
-import numpy as np
 import pandas as pd
+
 from stratum import Pipeline
 from stratum.features.base import Feature
 from stratum.schema import FeatureSchema, types
@@ -63,7 +63,7 @@ async def demo_nan() -> None:
     class NanFeature(Feature):
         schema = FeatureSchema({"score": types.Float64(nullable=False)})
 
-        async def extract(self, raw: pd.DataFrame, context: dict) -> dict:
+        async def extract(self, raw: pd.DataFrame, context: dict, entity_id: str | None = None) -> dict:
             # mean() on an empty group returns NaN
             return {"score": float(raw["amount"].mean())}
 
@@ -90,7 +90,7 @@ async def demo_nan() -> None:
     class SafeNanFeature(Feature):
         schema = FeatureSchema({"score": types.Float64(nullable=False)})
 
-        async def extract(self, raw: pd.DataFrame, context: dict) -> dict:
+        async def extract(self, raw: pd.DataFrame, context: dict, entity_id: str | None = None) -> dict:
             return {"score": float(raw["amount"].mean())}
 
         async def post_extract(self, result: dict) -> dict:
@@ -126,7 +126,7 @@ async def demo_empty_source() -> None:
     class UnguardedFeature(Feature):
         schema = FeatureSchema({"mean": types.Float64(nullable=False)})
 
-        async def extract(self, raw: pd.DataFrame, context: dict) -> dict:
+        async def extract(self, raw: pd.DataFrame, context: dict, entity_id: str | None = None) -> dict:
             # This does NOT raise on empty — it returns NaN (see weak point A)
             return {"mean": float(raw["amount"].mean())}
 
@@ -150,7 +150,7 @@ async def demo_empty_source() -> None:
     class GuardedFeature(Feature):
         schema = FeatureSchema({"mean": types.Float64(nullable=False)})
 
-        async def extract(self, raw: pd.DataFrame, context: dict) -> dict:
+        async def extract(self, raw: pd.DataFrame, context: dict, entity_id: str | None = None) -> dict:
             if raw.empty:
                 raise ValueError("No source data for this entity")
             return {"mean": float(raw["amount"].mean())}
@@ -181,15 +181,13 @@ async def demo_bundle_partial_failure() -> None:
                 raise ConnectionError("Simulated network error")
             return "flaky data"
 
+    class BundleFeature(Feature):
+        async def extract(self, raw, ctx, entity_id=None):
+            return {"v": raw["good"]}
+
     pipeline = Pipeline(
         source=SourceBundle(good=GoodSource(), flaky=FlakySource()),
-        feature=type(
-            "F",
-            (Feature,),
-            {
-                "extract": lambda self, raw, ctx: {"v": raw["good"]},
-            },
-        )(),
+        feature=BundleFeature(),
         store=MemoryStore(),
     )
     report = await pipeline.generate(entity_ids=["u1", "u2"])
@@ -226,14 +224,14 @@ async def demo_name_collision() -> None:
     # Simulate two feature classes from different teams / modules that both
     # happen to be named "EngagementScore".
     class EngagementScore(Feature):  # "team A" version
-        async def extract(self, raw, context):
+        async def extract(self, raw, context, entity_id=None):
             return {"v": "team_A_value"}
 
     # Rebind same name — identical __name__, different implementation
     _EngagementScore_A = EngagementScore
 
     class EngagementScore(Feature):  # "team B" version  # noqa: F811
-        async def extract(self, raw, context):
+        async def extract(self, raw, context, entity_id=None):
             return {"v": "team_B_value"}
 
     _EngagementScore_B = EngagementScore
@@ -246,7 +244,7 @@ async def demo_name_collision() -> None:
     await store.write(feat_b, "e1", {"v": "team_B_value"})  # silently overwrites!
 
     result = await store.read(feat_a, "e1")
-    print(f"  Wrote team_A then team_B for entity 'e1'.")
+    print("  Wrote team_A then team_B for entity 'e1'.")
     print(f"  Reading via feat_a → {result}  (expected team_A, got team_B)")
     print(f"\n  Both classes share __name__='{store._feature_key(feat_a)}' — same store key.")
     print()
@@ -276,13 +274,13 @@ async def demo_name_collision() -> None:
     class TeamAScore(Feature):
         feature_name = "team_a.engagement_score"
 
-        async def extract(self, raw, context):
+        async def extract(self, raw, context, entity_id=None):
             return {"v": "team_A_value"}
 
     class TeamBScore(Feature):
         feature_name = "team_b.engagement_score"
 
-        async def extract(self, raw, context):
+        async def extract(self, raw, context, entity_id=None):
             return {"v": "team_B_value"}
 
     safe_store = ModuleAwareStore()
@@ -323,7 +321,7 @@ async def demo_serial_processing() -> None:
     N = 60
 
     class IoFeature(Feature):
-        async def extract(self, raw, context):
+        async def extract(self, raw, context, entity_id=None):
             await asyncio.sleep(0.005)  # 5 ms simulated async I/O
             return {"v": 1.0}
 

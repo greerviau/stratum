@@ -107,7 +107,7 @@ class IndividualEmbedding(Feature):
 
     schema = FeatureSchema({"embedding": types.NDArray(shape=(EMBEDDING_DIM,), dtype="float32")})
 
-    async def extract(self, raw: np.ndarray, context: dict) -> dict:
+    async def extract(self, raw: np.ndarray, context: dict, entity_id: str | None = None) -> dict:
         # Simulate per-call overhead (HTTP round-trip, model warm-up, etc.)
         await asyncio.sleep(EXTRACT_OVERHEAD + EXTRACT_PER_ITEM)
         embedding = raw @ WEIGHT_MATRIX
@@ -119,14 +119,14 @@ class BatchEmbedding(Feature):
 
     schema = FeatureSchema({"embedding": types.NDArray(shape=(EMBEDDING_DIM,), dtype="float32")})
 
-    async def extract(self, raw: np.ndarray, context: dict) -> dict:
+    async def extract(self, raw: np.ndarray, context: dict, entity_id: str | None = None) -> dict:
         # Fallback for the default extract_batch path (shouldn't normally be called
         # when batch_size > 1, but keeps the class fully functional on its own)
         await asyncio.sleep(EXTRACT_OVERHEAD + EXTRACT_PER_ITEM)
         return {"embedding": raw @ WEIGHT_MATRIX}
 
     async def extract_batch(
-        self, raws: list[np.ndarray], context: dict
+        self, raws: list[np.ndarray], context: dict, entity_ids: list[str] | None = None
     ) -> list[dict | BaseException]:
         # One "API call" for the whole batch: fixed overhead + tiny per-item cost
         n = len(raws)

@@ -108,7 +108,7 @@ for sid in range(N_SENSORS):
     spike_mask = RNG.random(size=n_readings) < FAULT_PROB[sid]
     signal[spike_mask] += RNG.normal(0, BASE_AMP[sid] * 5, size=spike_mask.sum())
 
-    for i, (ts, val) in enumerate(zip(t.tolist(), signal.tolist())):
+    for _i, (ts, val) in enumerate(zip(t.tolist(), signal.tolist(), strict=True)):
         sensor_rows.append(
             {
                 "entity_id": f"sensor_{sid:04d}",

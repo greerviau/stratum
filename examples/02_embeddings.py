@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+
 from stratum import Pipeline
 from stratum.features.base import Feature
 from stratum.schema import FeatureSchema, types
@@ -105,7 +106,7 @@ class DocumentEmbedding(Feature):
         {"embedding": types.NDArray(shape=(EMBED_DIM,), dtype="float32", nullable=False)}
     )
 
-    async def extract(self, raw: str, context: dict) -> np.ndarray:
+    async def extract(self, raw: str, context: dict, entity_id: str | None = None) -> np.ndarray:
         return _trigram_embed(raw)
 
     async def post_extract(self, result: np.ndarray) -> np.ndarray:

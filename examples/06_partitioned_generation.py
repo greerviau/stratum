@@ -90,7 +90,7 @@ class SensorReading(Feature):
         }
     )
 
-    async def extract(self, raw: dict, context: dict) -> dict:
+    async def extract(self, raw: dict, context: dict, entity_id: str | None = None) -> dict:
         threshold = context.get("alert_threshold", 15.0)
         return {
             "baseline": raw["baseline"],
@@ -187,7 +187,7 @@ async def section_c() -> None:
     print("  partition_by groups sensors by region automatically.")
     print("  Within each region: serial (ordered).  Across regions: concurrent.")
     print()
-    print(f"  partition_by = lambda eid: eid.split('_')[1]")
+    print("  partition_by = lambda eid: eid.split('_')[1]")
     print(f"  → {REGIONS} partitions of {SENSORS_PER_REGION} sensors each")
     print(f"  → expected time ≈ {SENSORS_PER_REGION * RegionalAPISource.LATENCY * 20:.1f}s / region")
     print(f"    with {REGIONS} regions running concurrently")
@@ -377,7 +377,7 @@ async def main() -> None:
     print("  Summary")
     print("=" * 60)
     print(
-        f"""
+        """
   Mode                   | When to use
   -----------------------|----------------------------------------------
   concurrency=1          | Safety / debugging; guaranteed serial order

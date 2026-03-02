@@ -21,6 +21,7 @@ import time
 from pathlib import Path
 
 import pandas as pd
+
 from stratum import Pipeline
 from stratum.features.base import Feature
 from stratum.schema import FeatureSchema, types
@@ -52,7 +53,7 @@ class ReviewStats(Feature):
         }
     )
 
-    async def extract(self, raw: pd.DataFrame, context: dict) -> dict:
+    async def extract(self, raw: pd.DataFrame, context: dict, entity_id: str | None = None) -> dict:
         if raw.empty:
             raise ValueError("No reviews found for this entity")
 

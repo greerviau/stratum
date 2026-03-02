@@ -21,14 +21,14 @@ from stratum.stores import MemoryStore
 class MeanFeature(Feature):
     schema = FeatureSchema({"mean_value": types.Float64(nullable=False)})
 
-    async def extract(self, raw: pd.DataFrame, context: dict) -> dict:
+    async def extract(self, raw: pd.DataFrame, context: dict, entity_id: str | None = None) -> dict:
         if raw.empty:
             raise ValueError("No rows for entity")
         return {"mean_value": float(raw["amount"].mean())}
 
 
 class FailingFeature(Feature):
-    async def extract(self, raw, context):
+    async def extract(self, raw, context, entity_id=None):
         raise RuntimeError("Intentional extraction failure")
 
 
@@ -41,7 +41,7 @@ class HookTrackingFeature(Feature):
         self.pre_called = True
         return raw
 
-    async def extract(self, raw, context):
+    async def extract(self, raw, context, entity_id=None):
         return {"value": 42.0}
 
     async def post_extract(self, result):
@@ -55,11 +55,10 @@ class SlowFeature(Feature):
     def __init__(self, order_log: list[str]) -> None:
         self.order_log = order_log
 
-    async def extract(self, raw: pd.DataFrame, context: dict) -> dict:
-        entity_id = context.get("_entity_id", "?")
-        self.order_log.append(f"start:{entity_id}")
+    async def extract(self, raw: pd.DataFrame, context: dict, entity_id: str | None = None) -> dict:
+        self.order_log.append(f"start:{entity_id or '?'}")
         await asyncio.sleep(0)  # yield to event loop
-        self.order_log.append(f"end:{entity_id}")
+        self.order_log.append(f"end:{entity_id or '?'}")
         return {"value": 1.0}
 
 
@@ -145,7 +144,7 @@ async def test_generate_schema_violation_captured_as_failure(df):
     class BadFeature(Feature):
         schema = FeatureSchema({"score": types.Float64(nullable=False)})
 
-        async def extract(self, raw, context):
+        async def extract(self, raw, context, entity_id=None):
             return {"score": "not_a_float"}  # wrong type
 
     pipeline = Pipeline(
@@ -176,7 +175,7 @@ async def test_generate_context_forwarded_to_extract(df):
     received: dict = {}
 
     class ContextCapture(Feature):
-        async def extract(self, raw, context):
+        async def extract(self, raw, context, entity_id=None):
             received.update(context)
             return {"v": 1.0}
 
@@ -295,7 +294,7 @@ async def test_generate_serial_within_partition():
     order: list[str] = []
 
     class OrderedFeature(Feature):
-        async def extract(self, raw, context):
+        async def extract(self, raw, context, entity_id=None):
             order.append(raw)
             await asyncio.sleep(0)  # yield — would allow interleaving if not serial
             return {"v": 1.0}
@@ -368,7 +367,7 @@ async def test_generate_explicit_partitions_serial_within_group():
     processed: list[str] = []
 
     class RecordFeature(Feature):
-        async def extract(self, raw, context):
+        async def extract(self, raw, context, entity_id=None):
             processed.append(raw)
             return {"v": 1.0}
 
@@ -565,10 +564,10 @@ class BatchTrackingFeature(Feature):
     def __init__(self) -> None:
         self.calls: list[int] = []  # sizes of each extract_batch call
 
-    async def extract(self, raw, context):
+    async def extract(self, raw, context, entity_id=None):
         return {"v": 1.0}
 
-    async def extract_batch(self, raws, context):
+    async def extract_batch(self, raws, context, entity_ids=None):
         self.calls.append(len(raws))
         return [{"v": float(i)} for i in range(len(raws))]
 
@@ -576,10 +575,10 @@ class BatchTrackingFeature(Feature):
 class PartialFailBatchFeature(Feature):
     """extract_batch returns an exception for every other entity."""
 
-    async def extract(self, raw, context):
+    async def extract(self, raw, context, entity_id=None):
         return {"v": 1.0}
 
-    async def extract_batch(self, raws, context):
+    async def extract_batch(self, raws, context, entity_ids=None):
         results = []
         for i, _raw in enumerate(raws):
             if i % 2 == 1:
@@ -592,10 +591,10 @@ class PartialFailBatchFeature(Feature):
 class WholeBatchFailFeature(Feature):
     """extract_batch always raises, failing the entire batch."""
 
-    async def extract(self, raw, context):
+    async def extract(self, raw, context, entity_id=None):
         return {"v": 1.0}
 
-    async def extract_batch(self, raws, context):
+    async def extract_batch(self, raws, context, entity_ids=None):
         raise RuntimeError("Whole batch exploded")
 
 

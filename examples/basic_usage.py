@@ -12,6 +12,7 @@ Run with:
 import asyncio
 
 import pandas as pd
+
 from stratum import Pipeline
 from stratum.features.base import Feature
 from stratum.schema import FeatureSchema, types
@@ -28,7 +29,7 @@ class MeanPurchaseValue(Feature):
 
     schema = FeatureSchema({"mean_value": types.Float64(nullable=False, default=0.0)})
 
-    async def extract(self, raw: pd.DataFrame, context: dict) -> dict:
+    async def extract(self, raw: pd.DataFrame, context: dict, entity_id: str | None = None) -> dict:
         if raw.empty:
             raise ValueError("No purchase rows found for this entity")
         return {"mean_value": float(raw["amount"].mean())}

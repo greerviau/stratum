@@ -227,7 +227,7 @@ async def test_bundle_in_pipeline(sample_df):
     from stratum.stores import MemoryStore
 
     class CombinedFeature(Feature):
-        async def extract(self, raw: dict, context: dict) -> dict:
+        async def extract(self, raw: dict, context: dict, entity_id=None) -> dict:
             frame = raw["purchases"]
             multiplier = raw["config"]["multiplier"]
             return {"value": float(frame["amount"].mean()) * multiplier}

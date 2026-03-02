@@ -30,6 +30,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+
 from stratum import Pipeline
 from stratum.features.base import Feature
 from stratum.schema import FeatureSchema, types
@@ -98,7 +99,7 @@ class UserRiskScore(Feature):
             )
         return raw
 
-    async def extract(self, raw: dict, context: dict) -> dict:
+    async def extract(self, raw: dict, context: dict, entity_id: str | None = None) -> dict:
         txns = raw["transactions"]  # DataFrame
         profile = raw["profile"]  # Series (one row)
         limits = raw["limits"]  # dict of thresholds

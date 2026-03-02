@@ -104,7 +104,7 @@ class Pipeline:
 
             raw = await self.source.read(entity_id=entity_id)
             raw = await self.feature.pre_extract(raw)
-            result = await self.feature.extract(raw, context)
+            result = await self.feature.extract(raw, context, entity_id=entity_id)
             result = await self.feature.post_extract(result)
             errors = await self.feature.validate(result)
 
@@ -196,7 +196,9 @@ class Pipeline:
 
         # --- 4. Batch extract ---
         try:
-            batch_results: list[Any] = await self.feature.extract_batch(valid_raws, context)
+            batch_results: list[Any] = await self.feature.extract_batch(
+                valid_raws, context, entity_ids=valid_ids
+            )
         except Exception as exc:
             # Whole-batch failure: attribute to every entity in this batch.
             for entity_id in valid_ids:
