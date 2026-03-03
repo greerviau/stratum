@@ -42,7 +42,7 @@ class FileStore(FeatureStore):
     def _entity_path(self, feature: Feature, entity_id: str) -> Path:
         return self.path / self._feature_key(feature) / f"{entity_id}.bin"
 
-    async def write(self, feature: Feature, entity_id: str, data: Any) -> None:
+    async def write(self, feature: Feature, entity_id: str, data: Any, context: dict | None = None) -> None:
         path = self._entity_path(feature, entity_id)
         loop = asyncio.get_running_loop()
 

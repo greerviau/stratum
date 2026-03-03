@@ -43,7 +43,7 @@ def _run_entity_in_executor(
     """
 
     async def _work() -> tuple[Any, list[str]]:
-        raw = await source.read(entity_id=entity_id)
+        raw = await source.read(entity_id=entity_id, context=context)
         raw = await feature.pre_extract(raw)
         result = await feature.extract(raw, context, entity_id=entity_id)
         result = await feature.post_extract(result)
@@ -82,7 +82,13 @@ def _run_batch_in_executor(
     async def _work() -> list[tuple[Any, list[str]] | BaseException]:
         # --- Concurrent reads ---
         raw_results: list[Any] = await asyncio.gather(
-            *[source.read(entity_id=eid) for eid in entity_ids],
+            *[
+                source.read(
+                    entity_id=eid,
+                    context=entity_contexts[i] if entity_contexts is not None else context,
+                )
+                for i, eid in enumerate(entity_ids)
+            ],
             return_exceptions=True,
         )
 
@@ -244,7 +250,7 @@ class Pipeline:
                     entity_ctx,
                 )
             else:
-                raw = await self.source.read(entity_id=entity_id)
+                raw = await self.source.read(entity_id=entity_id, context=entity_ctx)
                 raw = await self.feature.pre_extract(raw)
                 result = await self.feature.extract(raw, entity_ctx, entity_id=entity_id)
                 result = await self.feature.post_extract(result)
@@ -254,7 +260,7 @@ class Pipeline:
                 report.failed[entity_id] = errors
                 return
 
-            await self.store.write(self.feature, entity_id, result)
+            await self.store.write(self.feature, entity_id, result, context=entity_ctx)
             report.succeeded[entity_id] = result if store_results else None
 
         except Exception as exc:
@@ -333,7 +339,10 @@ class Pipeline:
                         on_entity_done()
                 return
 
-            for entity_id, slot in zip(to_process, slot_results, strict=True):
+            for i, (entity_id, slot) in enumerate(zip(to_process, slot_results, strict=True)):
+                entity_ctx = (
+                    batch_entity_contexts[i] if batch_entity_contexts is not None else context
+                )
                 if isinstance(slot, BaseException):
                     report.failed[entity_id] = [
                         f"Unhandled exception in pipeline for feature '{feature_name}', "
@@ -345,7 +354,9 @@ class Pipeline:
                         report.failed[entity_id] = errors
                     else:
                         try:
-                            await self.store.write(self.feature, entity_id, result)
+                            await self.store.write(
+                                self.feature, entity_id, result, context=entity_ctx
+                            )
                             report.succeeded[entity_id] = result if store_results else None
                         except Exception as exc:
                             report.failed[entity_id] = [
@@ -356,13 +367,19 @@ class Pipeline:
                     on_entity_done()
             return
 
-        # --- 2. Concurrent reads (return_exceptions preserves per-entity errors) ---
+        # --- 2. Per-entity contexts (needed by both read and extract_batch) ---
+        entity_ctxs: dict[str, dict[str, Any]] = {
+            eid: {**context, **context_fn(eid)} if context_fn else context
+            for eid in to_process
+        }
+
+        # --- 3. Concurrent reads (return_exceptions preserves per-entity errors) ---
         raw_results: list[Any] = await asyncio.gather(
-            *[self.source.read(entity_id=eid) for eid in to_process],
+            *[self.source.read(entity_id=eid, context=entity_ctxs[eid]) for eid in to_process],
             return_exceptions=True,
         )
 
-        # --- 3. Pre-extract per entity; exclude read failures ---
+        # --- 4. Pre-extract per entity; exclude read failures ---
         valid_ids: list[str] = []
         valid_raws: list[Any] = []
 
@@ -390,9 +407,9 @@ class Pipeline:
         if not valid_ids:
             return
 
-        # --- 4. Batch extract ---
+        # --- 5. Batch extract ---
         entity_contexts: list[dict[str, Any]] | None = (
-            [{**context, **context_fn(eid)} for eid in valid_ids] if context_fn else None
+            [entity_ctxs[eid] for eid in valid_ids] if context_fn else None
         )
         try:
             batch_results: list[Any] = await self.feature.extract_batch(
@@ -409,7 +426,7 @@ class Pipeline:
                     on_entity_done()
             return
 
-        # --- 5. Post-extract, validate, write — per entity ---
+        # --- 6. Post-extract, validate, write — per entity ---
         for entity_id, result in zip(valid_ids, batch_results, strict=True):
             if isinstance(result, BaseException):
                 report.failed[entity_id] = [
@@ -423,7 +440,9 @@ class Pipeline:
                     if errors:
                         report.failed[entity_id] = errors
                     else:
-                        await self.store.write(self.feature, entity_id, result)
+                        await self.store.write(
+                            self.feature, entity_id, result, context=entity_ctxs[entity_id]
+                        )
                         report.succeeded[entity_id] = result if store_results else None
                 except Exception as exc:
                     report.failed[entity_id] = [

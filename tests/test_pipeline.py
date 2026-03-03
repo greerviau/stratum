@@ -11,6 +11,7 @@ from calcine import GenerationReport, Pipeline
 from calcine.features.base import Feature
 from calcine.schema import FeatureSchema, types
 from calcine.sources import DataFrameSource
+from calcine.sources.base import DataSource
 from calcine.stores import MemoryStore
 
 # ---------------------------------------------------------------------------
@@ -1203,3 +1204,90 @@ async def test_partition_context_fn_shared_context_is_base(wide_df):
     ctx = feature.received["u1"]
     assert ctx["shared_key"] == "shared"  # shared context preserved
     assert ctx["partition_key"] == "p"  # partition_context_fn shadows
+
+
+# ---------------------------------------------------------------------------
+# Context forwarding to source.read and store.write
+# ---------------------------------------------------------------------------
+
+
+class ContextCapturingSource(DataSource):
+    """Source that records the context kwarg it receives on each read."""
+
+    def __init__(self, df: pd.DataFrame) -> None:
+        self._df = df
+        self.read_contexts: dict[str, Any] = {}
+
+    async def read(self, entity_id: str | None = None, context: dict | None = None, **kwargs: Any) -> pd.DataFrame:
+        self.read_contexts[entity_id] = context
+        return self._df[self._df["entity_id"] == entity_id]
+
+
+class ContextCapturingStore(MemoryStore):
+    """Store that records the context kwarg it receives on each write."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.write_contexts: dict[str, Any] = {}
+
+    async def write(self, feature: Any, entity_id: str, data: Any, context: dict | None = None) -> None:
+        self.write_contexts[entity_id] = context
+        await super().write(feature, entity_id, data)
+
+
+@pytest.mark.asyncio
+async def test_context_forwarded_to_source_read(df):
+    source = ContextCapturingSource(df)
+    pipeline = Pipeline(source=source, feature=MeanFeature(), store=MemoryStore())
+
+    ctx = {"region": "us-east", "env": "prod"}
+    await pipeline.generate(entity_ids=["u1", "u2"], context=ctx)
+
+    assert source.read_contexts["u1"] == ctx
+    assert source.read_contexts["u2"] == ctx
+
+
+@pytest.mark.asyncio
+async def test_context_forwarded_to_store_write(df):
+    store = ContextCapturingStore()
+    pipeline = Pipeline(source=DataFrameSource(df), feature=MeanFeature(), store=store)
+
+    ctx = {"region": "us-east"}
+    await pipeline.generate(entity_ids=["u1", "u2"], context=ctx)
+
+    assert store.write_contexts["u1"] == ctx
+    assert store.write_contexts["u2"] == ctx
+
+
+@pytest.mark.asyncio
+async def test_partition_context_forwarded_to_source(df):
+    """Source should receive the fully merged (partition + entity) context."""
+    source = ContextCapturingSource(df)
+    pipeline = Pipeline(source=source, feature=MeanFeature(), store=MemoryStore())
+
+    await pipeline.generate(
+        entity_ids=["u1", "u2"],
+        context={"base": True},
+        partition_by=lambda eid: "group",
+        partition_context_fn=lambda key: {"partition": key},
+        context_fn=lambda eid: {"entity": eid},
+    )
+
+    assert source.read_contexts["u1"] == {"base": True, "partition": "group", "entity": "u1"}
+    assert source.read_contexts["u2"] == {"base": True, "partition": "group", "entity": "u2"}
+
+
+@pytest.mark.asyncio
+async def test_context_forwarded_to_source_and_store_in_batch_mode(df):
+    """Context should reach source.read and store.write in batch (extract_batch) mode."""
+    source = ContextCapturingSource(df)
+    store = ContextCapturingStore()
+    pipeline = Pipeline(source=source, feature=MeanFeature(), store=store)
+
+    ctx = {"batch": True}
+    await pipeline.generate(entity_ids=["u1", "u2"], context=ctx, batch_size=2)
+
+    assert source.read_contexts["u1"] == ctx
+    assert source.read_contexts["u2"] == ctx
+    assert store.write_contexts["u1"] == ctx
+    assert store.write_contexts["u2"] == ctx

@@ -30,7 +30,7 @@ class MemoryStore(FeatureStore):
         # Structure: {feature_name: {entity_id: data}}
         self._data: dict[str, dict[str, Any]] = {}
 
-    async def write(self, feature: Feature, entity_id: str, data: Any) -> None:
+    async def write(self, feature: Feature, entity_id: str, data: Any, context: dict | None = None) -> None:
         key = self._feature_key(feature)
         if key not in self._data:
             self._data[key] = {}

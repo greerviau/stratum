@@ -57,13 +57,22 @@ class FeatureStore(ABC):
                     raise KeyError(key)
     """
 
-    async def write(self, feature: Feature, entity_id: str, data: Any) -> None:
+    async def write(
+        self,
+        feature: Feature,
+        entity_id: str,
+        data: Any,
+        context: dict | None = None,
+    ) -> None:
         """Persist a feature value for an entity.
 
         Args:
             feature: The ``Feature`` instance (class name used as namespace).
             entity_id: Unique entity identifier.
             data: Extracted feature value to store.
+            context: The pipeline context dict at write time.  Implementations
+                may use this for routing (e.g. sharding writes by region) while
+                keeping ``read`` context-free.  Ignored by default.
 
         Raises:
             NotImplementedError: If this store is read-only.
