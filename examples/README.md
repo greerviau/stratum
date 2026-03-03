@@ -1,6 +1,6 @@
 # Examples
 
-End-to-end scripts that demonstrate stratum across different data formats,
+End-to-end scripts that demonstrate calcine across different data formats,
 storage backends, and source configurations.
 
 ## Setup

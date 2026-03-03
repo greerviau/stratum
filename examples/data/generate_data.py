@@ -1,4 +1,4 @@
-"""Generate synthetic datasets used by the stratum examples.
+"""Generate synthetic datasets used by the calcine examples.
 
 Run once from the repo root:
 

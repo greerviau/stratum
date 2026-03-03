@@ -37,11 +37,11 @@ import asyncio
 import time
 from typing import Any
 
-from stratum import Pipeline
-from stratum.features.base import Feature
-from stratum.schema import FeatureSchema, types
-from stratum.sources.base import DataSource
-from stratum.stores import MemoryStore
+from calcine import Pipeline
+from calcine.features.base import Feature
+from calcine.schema import FeatureSchema, types
+from calcine.sources.base import DataSource
+from calcine.stores import MemoryStore
 
 # ---------------------------------------------------------------------------
 # Simulated regional API source

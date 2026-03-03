@@ -1,4 +1,4 @@
-# Contributing to stratum
+# Contributing to calcine
 
 Thank you for your interest in contributing. This guide covers everything you
 need to get from zero to a merged pull request.
@@ -18,12 +18,12 @@ need to get from zero to a merged pull request.
 
 ## Development setup
 
-stratum uses [uv](https://docs.astral.sh/uv/) for environment management.
+calcine uses [uv](https://docs.astral.sh/uv/) for environment management.
 
 ```bash
 # Clone and enter the repo
-git clone https://github.com/greerviau/stratum.git
-cd stratum
+git clone https://github.com/greerviau/calcine.git
+cd calcine
 
 # Create a virtual environment and install all dev dependencies
 uv venv
@@ -58,7 +58,7 @@ pytest
 pytest tests/test_pipeline.py -v
 
 # With coverage
-pytest --cov=stratum --cov-report=term-missing
+pytest --cov=calcine --cov-report=term-missing
 ```
 
 Tests must pass on **Python 3.10, 3.11, and 3.12**.  The CI matrix runs all
@@ -72,13 +72,13 @@ We use [Ruff](https://docs.astral.sh/ruff/) for linting and formatting.
 
 ```bash
 # Check for issues
-ruff check stratum/ tests/
+ruff check calcine/ tests/
 
 # Auto-fix where possible
-ruff check --fix stratum/ tests/
+ruff check --fix calcine/ tests/
 
 # Format
-ruff format stratum/ tests/
+ruff format calcine/ tests/
 ```
 
 Key conventions:
@@ -94,7 +94,7 @@ Key conventions:
 ## Project structure
 
 ```
-stratum/
+calcine/
 ├── pipeline.py        # Pipeline + GenerationReport
 ├── schema.py          # FeatureSchema + type system
 ├── serializers.py     # Serializer ABC + impls
@@ -103,7 +103,7 @@ stratum/
 ├── features/          # Feature ABC
 └── stores/            # FeatureStore ABC + built-ins
 
-tests/                 # mirrors stratum/ structure
+tests/                 # mirrors calcine/ structure
 examples/              # runnable end-to-end scripts
 docs/                  # architecture and extension guides
 ```
@@ -112,18 +112,18 @@ docs/                  # architecture and extension guides
 
 ## Adding a new DataSource
 
-1. Create `stratum/sources/your_source.py`
+1. Create `calcine/sources/your_source.py`
 2. Subclass `DataSource` and implement `async read(self, **kwargs)`
 3. Accept `entity_id` as a keyword argument and scope data to it
 4. Raise `SourceError(source_name=..., entity_id=..., cause=...)` on failure
-5. Export from `stratum/sources/__init__.py`
+5. Export from `calcine/sources/__init__.py`
 6. Add tests in `tests/test_sources.py`
 
 Minimal template:
 
 ```python
-from stratum.sources.base import DataSource
-from stratum.exceptions import SourceError
+from calcine.sources.base import DataSource
+from calcine.exceptions import SourceError
 
 class MySource(DataSource):
     async def read(self, entity_id: str | None = None, **kwargs) -> Any:
@@ -141,19 +141,19 @@ class MySource(DataSource):
 
 ## Adding a new FeatureStore
 
-1. Create `stratum/stores/your_store.py`
+1. Create `calcine/stores/your_store.py`
 2. Subclass `FeatureStore` and implement all four abstract methods:
    `write`, `read`, `exists`, `delete`
 3. Raise `StoreError(store_name=..., feature_name=..., entity_id=..., cause=...)` on I/O failure
 4. Raise `KeyError` (not `StoreError`) when an entity simply doesn't exist
-5. Export from `stratum/stores/__init__.py`
+5. Export from `calcine/stores/__init__.py`
 6. Add tests in `tests/test_stores.py`
 
 ---
 
 ## Adding a new schema type
 
-1. Add a class to `stratum/schema.py` that inherits `FeatureType`
+1. Add a class to `calcine/schema.py` that inherits `FeatureType`
 2. Implement `_validate_value(self, value) -> list[str]`
 3. Add it to the `types` namespace class at the bottom of `schema.py`
 4. Add test cases in `tests/test_schema.py`

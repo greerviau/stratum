@@ -24,7 +24,7 @@ What actually happened, including the full traceback if applicable.
 
 ## Environment
 
-- stratum version:
+- calcine version:
 - Python version:
 - OS:
 - Installed extras (`[http]`, `[parquet]`, …):

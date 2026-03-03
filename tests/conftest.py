@@ -1,14 +1,14 @@
-"""Shared fixtures for stratum tests."""
+"""Shared fixtures for calcine tests."""
 
 from __future__ import annotations
 
 import pandas as pd
 import pytest
 
-from stratum.features.base import Feature
-from stratum.schema import FeatureSchema, types
-from stratum.sources import DataFrameSource
-from stratum.stores import MemoryStore
+from calcine.features.base import Feature
+from calcine.schema import FeatureSchema, types
+from calcine.sources import DataFrameSource
+from calcine.stores import MemoryStore
 
 # ---------------------------------------------------------------------------
 # Concrete feature fixtures

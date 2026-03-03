@@ -1,13 +1,13 @@
 # Schema system
 
-stratum's schema system validates feature output before it reaches the
+calcine's schema system validates feature output before it reaches the
 store, catching type mismatches early without requiring a full type-checking
 framework.
 
 ## Overview
 
 ```python
-from stratum.schema import FeatureSchema, types
+from calcine.schema import FeatureSchema, types
 
 schema = FeatureSchema({
     "score":     types.Float64(nullable=False, default=0.0),
@@ -119,7 +119,7 @@ constraints (e.g. `end_time > start_time`), do it in `post_extract` or
 Subclass `FeatureType` and implement `_validate_value`:
 
 ```python
-from stratum.schema import FeatureType
+from calcine.schema import FeatureType
 
 class PositiveFloat(FeatureType):
     def _validate_value(self, value) -> list[str]:

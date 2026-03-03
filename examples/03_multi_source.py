@@ -31,12 +31,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from stratum import Pipeline
-from stratum.features.base import Feature
-from stratum.schema import FeatureSchema, types
-from stratum.sources import DataFrameSource, SourceBundle
-from stratum.sources.base import DataSource
-from stratum.stores import MemoryStore
+from calcine import Pipeline
+from calcine.features.base import Feature
+from calcine.schema import FeatureSchema, types
+from calcine.sources import DataFrameSource, SourceBundle
+from calcine.sources.base import DataSource
+from calcine.stores import MemoryStore
 
 DATA = Path(__file__).parent / "data"
 

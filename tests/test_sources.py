@@ -9,8 +9,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from stratum.exceptions import SourceError
-from stratum.sources import DataFrameSource, DataSource, DirectorySource, FileSource, SourceBundle
+from calcine.exceptions import SourceError
+from calcine.sources import DataFrameSource, DataSource, DirectorySource, FileSource, SourceBundle
 
 # ---------------------------------------------------------------------------
 # DataFrameSource
@@ -76,12 +76,12 @@ async def test_dataframe_source_bad_entity_col_raises(sample_df):
 @pytest.mark.asyncio
 async def test_file_source_reads_bytes():
     with tempfile.NamedTemporaryFile(delete=False, suffix=".bin") as f:
-        f.write(b"hello stratum")
+        f.write(b"hello calcine")
         path = f.name
     try:
         source = FileSource(path)
         data = await source.read()
-        assert data == b"hello stratum"
+        assert data == b"hello calcine"
     finally:
         os.unlink(path)
 
@@ -222,9 +222,9 @@ def test_bundle_requires_at_least_one_source():
 @pytest.mark.asyncio
 async def test_bundle_in_pipeline(sample_df):
     """SourceBundle integrates end-to-end with Pipeline."""
-    from stratum import Pipeline
-    from stratum.features.base import Feature
-    from stratum.stores import MemoryStore
+    from calcine import Pipeline
+    from calcine.features.base import Feature
+    from calcine.stores import MemoryStore
 
     class CombinedFeature(Feature):
         async def extract(self, raw: dict, context: dict, entity_id=None) -> dict:

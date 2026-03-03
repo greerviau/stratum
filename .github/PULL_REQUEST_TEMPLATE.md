@@ -21,7 +21,7 @@
 
 - [ ] Added / updated unit tests
 - [ ] All existing tests pass (`pytest`)
-- [ ] Lint passes (`ruff check stratum/ tests/`)
+- [ ] Lint passes (`ruff check calcine/ tests/`)
 
 ## Related issues
 

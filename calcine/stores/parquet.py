@@ -30,7 +30,7 @@ class ParquetStore(FeatureStore):
 
     Requires the ``[parquet]`` extra::
 
-        pip install stratum[parquet]
+        pip install calcine[parquet]
 
     Example::
 
@@ -54,7 +54,7 @@ class ParquetStore(FeatureStore):
         except ImportError as exc:
             raise ImportError(
                 "pandas and pyarrow are required for ParquetStore. "
-                "Install with: pip install stratum[parquet]"
+                "Install with: pip install calcine[parquet]"
             ) from exc
 
     async def write(self, feature: Feature, entity_id: str, data: Any) -> None:

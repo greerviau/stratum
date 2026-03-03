@@ -1,14 +1,14 @@
-# Extending stratum
+# Extending calcine
 
-Every component in stratum is designed to be subclassed.  This guide shows
+Every component in calcine is designed to be subclassed.  This guide shows
 the minimum required implementation for each extension point.
 
 ## Custom DataSource
 
 ```python
 from typing import Any
-from stratum.sources.base import DataSource
-from stratum.exceptions import SourceError
+from calcine.sources.base import DataSource
+from calcine.exceptions import SourceError
 
 
 class BigQuerySource(DataSource):
@@ -50,8 +50,8 @@ class BigQuerySource(DataSource):
 ## Custom Feature
 
 ```python
-from stratum.features.base import Feature
-from stratum.schema import FeatureSchema, types
+from calcine.features.base import Feature
+from calcine.schema import FeatureSchema, types
 
 
 class SentimentFeature(Feature):
@@ -98,8 +98,8 @@ All hooks have pass-through defaults — only override what you need.
 
 ```python
 import pickle
-from stratum.stores.base import FeatureStore
-from stratum.exceptions import StoreError
+from calcine.stores.base import FeatureStore
+from calcine.exceptions import StoreError
 
 
 class RedisStore(FeatureStore):
@@ -107,7 +107,7 @@ class RedisStore(FeatureStore):
         self.redis = redis
 
     def _key(self, feature, entity_id: str) -> str:
-        return f"stratum:{self._feature_key(feature)}:{entity_id}"
+        return f"calcine:{self._feature_key(feature)}:{entity_id}"
 
     async def write(self, feature, entity_id, data):
         try:
@@ -156,7 +156,7 @@ class RedisStore(FeatureStore):
 
 ```python
 import msgpack
-from stratum.serializers import Serializer
+from calcine.serializers import Serializer
 
 
 class MsgPackSerializer(Serializer):
@@ -176,7 +176,7 @@ store = FileStore("/data/features", serializer=MsgPackSerializer())
 ## Custom schema type
 
 ```python
-from stratum.schema import FeatureType, types
+from calcine.schema import FeatureType, types
 from typing import Any
 
 

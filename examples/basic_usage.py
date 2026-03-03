@@ -1,4 +1,4 @@
-"""End-to-end stratum example.
+"""End-to-end calcine example.
 
 Demonstrates:
   - Defining a custom Feature with a FeatureSchema
@@ -13,11 +13,11 @@ import asyncio
 
 import pandas as pd
 
-from stratum import Pipeline
-from stratum.features.base import Feature
-from stratum.schema import FeatureSchema, types
-from stratum.sources import DataFrameSource
-from stratum.stores import MemoryStore
+from calcine import Pipeline
+from calcine.features.base import Feature
+from calcine.schema import FeatureSchema, types
+from calcine.sources import DataFrameSource
+from calcine.stores import MemoryStore
 
 # ---------------------------------------------------------------------------
 # 1. Define a Feature

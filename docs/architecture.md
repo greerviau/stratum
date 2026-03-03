@@ -1,6 +1,6 @@
 # Architecture
 
-This document explains the core design decisions in stratum and the
+This document explains the core design decisions in calcine and the
 reasoning behind them.
 
 ## The three-part abstraction
@@ -98,7 +98,7 @@ errors = schema.validate(arr)   # validates arr directly, not a dict
 
 ## Error handling philosophy
 
-stratum distinguishes three categories of failure:
+calcine distinguishes three categories of failure:
 
 | Error type | Cause | Pipeline behaviour |
 |-----------|-------|--------------------|

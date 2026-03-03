@@ -1,4 +1,4 @@
-"""Specific exception types for stratum.
+"""Specific exception types for calcine.
 
 All exceptions include contextual information (feature name, entity ID, cause)
 to make debugging easier.
@@ -7,11 +7,11 @@ to make debugging easier.
 from __future__ import annotations
 
 
-class stratumError(Exception):
-    """Base class for all stratum errors."""
+class CalcineError(Exception):
+    """Base class for all calcine errors."""
 
 
-class SchemaViolationError(stratumError):
+class SchemaViolationError(CalcineError):
     """Raised when a feature result fails schema validation.
 
     Attributes:
@@ -30,7 +30,7 @@ class SchemaViolationError(stratumError):
         )
 
 
-class SourceError(stratumError):
+class SourceError(CalcineError):
     """Raised when a DataSource fails to read data.
 
     Attributes:
@@ -49,7 +49,7 @@ class SourceError(stratumError):
         )
 
 
-class StoreError(stratumError):
+class StoreError(CalcineError):
     """Raised when a FeatureStore fails to read or write data.
 
     Attributes:

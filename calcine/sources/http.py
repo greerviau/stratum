@@ -27,7 +27,7 @@ class HTTPSource(DataSource):
 
     Requires the ``[http]`` extra::
 
-        pip install stratum[http]
+        pip install calcine[http]
     """
 
     def __init__(
@@ -59,7 +59,7 @@ class HTTPSource(DataSource):
             import httpx
         except ImportError as exc:
             raise ImportError(
-                "httpx is required for HTTPSource. Install with: pip install stratum[http]"
+                "httpx is required for HTTPSource. Install with: pip install calcine[http]"
             ) from exc
 
         url = self.url_template

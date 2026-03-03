@@ -1,6 +1,6 @@
-# stratum
+# calcine
 
-[![CI](https://github.com/greerviau/stratum/actions/workflows/ci.yml/badge.svg)](https://github.com/greerviau/stratum/actions/workflows/ci.yml)
+[![CI](https://github.com/greerviau/calcine/actions/workflows/ci.yml/badge.svg)](https://github.com/greerviau/calcine/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
@@ -11,7 +11,7 @@ A source-agnostic, type-agnostic featurization pipeline framework for Python.
 DataSource  ──►  Feature  ──►  FeatureStore
 ```
 
-stratum gives you a clean three-part abstraction for building reproducible,
+calcine gives you a clean three-part abstraction for building reproducible,
 validated feature extraction pipelines — over any data source and any storage
 backend, with no lock-in on format or framework.
 
@@ -35,10 +35,10 @@ backend, with no lock-in on format or framework.
 ## Installation
 
 ```bash
-pip install stratum                  # core (numpy only)
-pip install "stratum[http]"          # + async HTTP source
-pip install "stratum[parquet]"       # + Parquet store
-pip install "stratum[dev]"           # + test/lint tools
+pip install calcine                  # core (numpy only)
+pip install "calcine[http]"          # + async HTTP source
+pip install "calcine[parquet]"       # + Parquet store
+pip install "calcine[dev]"           # + test/lint tools
 ```
 
 ---
@@ -48,11 +48,11 @@ pip install "stratum[dev]"           # + test/lint tools
 ```python
 import asyncio
 import pandas as pd
-from stratum import Pipeline
-from stratum.features.base import Feature
-from stratum.schema import FeatureSchema, types
-from stratum.sources import DataFrameSource
-from stratum.stores import MemoryStore
+from calcine import Pipeline
+from calcine.features.base import Feature
+from calcine.schema import FeatureSchema, types
+from calcine.sources import DataFrameSource
+from calcine.stores import MemoryStore
 
 
 class MeanPurchaseValue(Feature):
@@ -95,7 +95,7 @@ When your feature needs data from more than one place, compose sources with
 a plain `dict` keyed by whatever names you choose:
 
 ```python
-from stratum.sources import SourceBundle
+from calcine.sources import SourceBundle
 
 pipeline = Pipeline(
     source=SourceBundle(
@@ -123,7 +123,7 @@ No assumptions are made about what the sources represent or how they relate.
 ## Schema system
 
 ```python
-from stratum.schema import FeatureSchema, types
+from calcine.schema import FeatureSchema, types
 
 schema = FeatureSchema({
     "score":     types.Float64(nullable=False, default=0.0),
@@ -204,7 +204,7 @@ pytest
 ## Project layout
 
 ```
-stratum/
+calcine/
 ├── pipeline.py        Pipeline + GenerationReport
 ├── schema.py          FeatureSchema + type system
 ├── serializers.py     Serializer ABC + Pickle / JSON / Numpy
@@ -213,7 +213,7 @@ stratum/
 ├── features/          Feature ABC
 └── stores/            FeatureStore ABC + MemoryStore, FileStore, ParquetStore
 
-tests/                 99 tests mirroring the stratum structure
+tests/                 99 tests mirroring the calcine structure
 examples/              5 runnable end-to-end scripts + generated datasets
 docs/                  Architecture, extension guide, schema reference
 ```

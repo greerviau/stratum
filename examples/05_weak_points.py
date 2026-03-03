@@ -1,6 +1,6 @@
 """05 — Known Weak Points and Recommended Mitigations
 
-This file documents five current limitations of stratum, each with:
+This file documents five current limitations of calcine, each with:
   1. A minimal reproduction showing the exact behavior
   2. The recommended workaround pattern
 
@@ -24,12 +24,12 @@ from typing import Any
 
 import pandas as pd
 
-from stratum import Pipeline
-from stratum.features.base import Feature
-from stratum.schema import FeatureSchema, types
-from stratum.sources import DataFrameSource, SourceBundle
-from stratum.sources.base import DataSource
-from stratum.stores import MemoryStore
+from calcine import Pipeline
+from calcine.features.base import Feature
+from calcine.schema import FeatureSchema, types
+from calcine.sources import DataFrameSource, SourceBundle
+from calcine.sources.base import DataSource
+from calcine.stores import MemoryStore
 
 SEP = "\n" + "─" * 60 + "\n"
 
@@ -355,7 +355,7 @@ async def demo_serial_processing() -> None:
 
 
 async def main() -> None:
-    print("stratum — Known Weak Points & Mitigations")
+    print("calcine — Known Weak Points & Mitigations")
     await demo_nan()
     await demo_empty_source()
     await demo_bundle_partial_failure()

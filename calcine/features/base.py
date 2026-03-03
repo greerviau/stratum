@@ -9,7 +9,7 @@ from ..schema import FeatureSchema
 
 
 class Feature(ABC):
-    """Contract for all feature extractors in the stratum pipeline.
+    """Contract for all feature extractors in the calcine pipeline.
 
     A ``Feature`` transforms raw data (from a ``DataSource``) into a
     structured, typed feature value.  The full extraction lifecycle is::

@@ -7,11 +7,11 @@ import asyncio
 import pandas as pd
 import pytest
 
-from stratum import GenerationReport, Pipeline
-from stratum.features.base import Feature
-from stratum.schema import FeatureSchema, types
-from stratum.sources import DataFrameSource
-from stratum.stores import MemoryStore
+from calcine import GenerationReport, Pipeline
+from calcine.features.base import Feature
+from calcine.schema import FeatureSchema, types
+from calcine.sources import DataFrameSource
+from calcine.stores import MemoryStore
 
 # ---------------------------------------------------------------------------
 # Helper feature implementations
@@ -308,7 +308,7 @@ async def test_generate_serial_within_partition():
         async def read(self, entity_id=None, **kwargs):
             return entity_id  # raw is just the entity_id string
 
-    from stratum.sources.base import DataSource
+    from calcine.sources.base import DataSource
 
     class EchoSource(DataSource):
         async def read(self, entity_id=None, **kwargs):
@@ -358,7 +358,7 @@ async def test_generate_explicit_partitions_correct_results(wide_df):
 @pytest.mark.asyncio
 async def test_generate_explicit_partitions_serial_within_group():
     """Entities within an explicit partition are always processed in the given order."""
-    from stratum.sources.base import DataSource
+    from calcine.sources.base import DataSource
 
     class EchoSource(DataSource):
         async def read(self, entity_id=None, **kwargs):

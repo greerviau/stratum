@@ -180,7 +180,7 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
-# ── stratum: example data ─────────────────────────────────────────────────
+# ── calcine: example data ─────────────────────────────────────────────────
 # Large generated datasets (>10 MB). Regenerate with:
 #   python examples/data/generate_data.py
 examples/data/reviews.csv

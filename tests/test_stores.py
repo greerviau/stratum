@@ -7,10 +7,10 @@ import tempfile
 import numpy as np
 import pytest
 
-from stratum.features.base import Feature
-from stratum.serializers import JSONSerializer, NumpySerializer
-from stratum.stores import FileStore, MemoryStore
-from stratum.stores.base import FeatureStore
+from calcine.features.base import Feature
+from calcine.serializers import JSONSerializer, NumpySerializer
+from calcine.stores import FileStore, MemoryStore
+from calcine.stores.base import FeatureStore
 
 # Optional parquet deps
 try:
@@ -193,7 +193,7 @@ class TestFileStore:
 class TestParquetStore:
     @pytest.mark.asyncio
     async def test_write_and_read(self, feature):
-        from stratum.stores import ParquetStore
+        from calcine.stores import ParquetStore
 
         with tempfile.TemporaryDirectory() as tmpdir:
             store = ParquetStore(tmpdir)
@@ -204,7 +204,7 @@ class TestParquetStore:
 
     @pytest.mark.asyncio
     async def test_exists(self, feature):
-        from stratum.stores import ParquetStore
+        from calcine.stores import ParquetStore
 
         with tempfile.TemporaryDirectory() as tmpdir:
             store = ParquetStore(tmpdir)
@@ -214,7 +214,7 @@ class TestParquetStore:
 
     @pytest.mark.asyncio
     async def test_delete(self, feature):
-        from stratum.stores import ParquetStore
+        from calcine.stores import ParquetStore
 
         with tempfile.TemporaryDirectory() as tmpdir:
             store = ParquetStore(tmpdir)
@@ -224,7 +224,7 @@ class TestParquetStore:
 
     @pytest.mark.asyncio
     async def test_multiple_entities(self, feature):
-        from stratum.stores import ParquetStore
+        from calcine.stores import ParquetStore
 
         with tempfile.TemporaryDirectory() as tmpdir:
             store = ParquetStore(tmpdir)
@@ -238,7 +238,7 @@ class TestParquetStore:
 
     @pytest.mark.asyncio
     async def test_overwrite_entity(self, feature):
-        from stratum.stores import ParquetStore
+        from calcine.stores import ParquetStore
 
         with tempfile.TemporaryDirectory() as tmpdir:
             store = ParquetStore(tmpdir)
@@ -249,7 +249,7 @@ class TestParquetStore:
 
     @pytest.mark.asyncio
     async def test_read_missing_raises_key_error(self, feature):
-        from stratum.stores import ParquetStore
+        from calcine.stores import ParquetStore
 
         with tempfile.TemporaryDirectory() as tmpdir:
             store = ParquetStore(tmpdir)

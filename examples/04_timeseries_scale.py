@@ -26,12 +26,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from stratum import Pipeline
-from stratum.features.base import Feature
-from stratum.schema import FeatureSchema, types
-from stratum.serializers import JSONSerializer
-from stratum.sources import DataFrameSource
-from stratum.stores import FileStore, MemoryStore
+from calcine import Pipeline
+from calcine.features.base import Feature
+from calcine.schema import FeatureSchema, types
+from calcine.serializers import JSONSerializer
+from calcine.sources import DataFrameSource
+from calcine.stores import FileStore, MemoryStore
 
 DATA = Path(__file__).parent / "data"
 

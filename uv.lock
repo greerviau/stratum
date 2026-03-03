@@ -724,7 +724,7 @@ wheels = [
 ]
 
 [[package]]
-name = "stratum"
+name = "calcine"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

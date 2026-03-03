@@ -1,4 +1,4 @@
-"""stratum — A source-agnostic, type-agnostic featurization pipeline framework.
+"""calcine — A source-agnostic, type-agnostic featurization pipeline framework.
 
 Core abstraction::
 
@@ -11,11 +11,11 @@ tied together by::
 
 Quick start::
 
-    from stratum import Pipeline
-    from stratum.sources import DataFrameSource
-    from stratum.features.base import Feature
-    from stratum.stores import MemoryStore
-    from stratum.schema import FeatureSchema, types
+    from calcine import Pipeline
+    from calcine.sources import DataFrameSource
+    from calcine.features.base import Feature
+    from calcine.stores import MemoryStore
+    from calcine.schema import FeatureSchema, types
     import asyncio
 
     class MyFeature(Feature):
@@ -34,7 +34,7 @@ Quick start::
     value  = await pipeline.retrieve("e1")
 """
 
-from .exceptions import SchemaViolationError, SourceError, StoreError, stratumError
+from .exceptions import SchemaViolationError, SourceError, StoreError, CalcineError
 from .features.base import Feature
 from .pipeline import GenerationReport, Pipeline
 from .schema import FeatureSchema, types
@@ -57,7 +57,7 @@ __all__ = [
     "FeatureSchema",
     "types",
     # Exceptions
-    "stratumError",
+    "CalcineError",
     "SchemaViolationError",
     "SourceError",
     "StoreError",

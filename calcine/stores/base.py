@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 
 class FeatureStore(ABC):
-    """Contract for all feature stores in the stratum pipeline.
+    """Contract for all feature stores in the calcine pipeline.
 
     A ``FeatureStore`` persists and retrieves extracted feature values.
     All operations are keyed by ``(feature, entity_id)`` where the feature

@@ -4,7 +4,7 @@ Supports both tabular (dict) and non-tabular (numpy arrays, bytes, etc.) data.
 
 Usage::
 
-    from stratum.schema import FeatureSchema, types
+    from calcine.schema import FeatureSchema, types
 
     schema = FeatureSchema({
         "embedding": types.NDArray(shape=(None, 128), dtype="float32"),
@@ -198,7 +198,7 @@ class types:
 
     Example::
 
-        from stratum.schema import types
+        from calcine.schema import types
 
         types.Float64(nullable=False, default=0.0)
         types.NDArray(shape=(None, 128), dtype="float32")

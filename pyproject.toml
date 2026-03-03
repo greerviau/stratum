@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "stratum"
+name = "calcine"
 version = "0.1.0"
 description = "A source-agnostic, type-agnostic featurization pipeline framework"
 readme = "README.md"
@@ -63,7 +63,7 @@ select = ["E", "F", "I", "UP", "B", "C4"]
 ignore = ["E501"]  # line length handled by formatter
 
 [tool.ruff.lint.isort]
-known-first-party = ["stratum"]
+known-first-party = ["calcine"]
 
 [tool.mypy]
 python_version       = "3.10"

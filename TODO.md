@@ -1,4 +1,4 @@
-# stratum — TODO
+# calcine — TODO
 
 Priority tiers: **P0** = blocking real use, **P1** = significant gap, **P2** = quality of life, **P3** = stretch.
 
@@ -25,7 +25,7 @@ Priority tiers: **P0** = blocking real use, **P1** = significant gap, **P2** = q
 
 - [x] **Incremental generation (`only_missing` mode)** — Add an `overwrite: bool = True` parameter to `generate()`. When `False`, skip entities where `store.exists()` returns True. Makes re-running pipelines cheap.
 
-- [x] **Progress reporting** — Add a `on_progress` callback parameter to `generate()` that receives `(completed: int, total: int, report_so_far: GenerationReport)` after each entity. Lets callers wire in tqdm, logging, or custom telemetry without coupling stratum to any specific library.
+- [x] **Progress reporting** — Add a `on_progress` callback parameter to `generate()` that receives `(completed: int, total: int, report_so_far: GenerationReport)` after each entity. Lets callers wire in tqdm, logging, or custom telemetry without coupling calcine to any specific library.
 
 ---
 
@@ -63,14 +63,14 @@ Priority tiers: **P0** = blocking real use, **P1** = significant gap, **P2** = q
 
 ## P3 — Stretch / future
 
-- [ ] **S3 / object storage source and store** — `S3Source` and `S3Store` via `boto3`/`aiobotocore` as an optional extra `stratum[s3]`.
+- [ ] **S3 / object storage source and store** — `S3Source` and `S3Store` via `boto3`/`aiobotocore` as an optional extra `calcine[s3]`.
 
-- [ ] **Redis store** — `RedisStore` for low-latency feature serving as an optional extra `stratum[redis]`.
+- [ ] **Redis store** — `RedisStore` for low-latency feature serving as an optional extra `calcine[redis]`.
 
 - [ ] **Feature versioning** — Allow a `version: str` class attribute on `Feature` that is included in the store key, so `MeanPurchaseValue_v2` coexists with `MeanPurchaseValue_v1` without collision.
 
 - [ ] **Feature registry** — A lightweight `FeatureRegistry` that maps feature names to classes, enabling pipeline construction from config files or CLI invocations.
 
-- [ ] **CLI** — `stratum generate`, `stratum inspect`, `stratum delete` commands for operating on stores from the terminal without writing Python.
+- [ ] **CLI** — `calcine generate`, `calcine inspect`, `calcine delete` commands for operating on stores from the terminal without writing Python.
 
 - [ ] **Stream-mode generate** — Instead of collecting all `entity_ids` upfront, accept an `AsyncIterator[str]` so pipelines can process infinite or externally-driven entity streams (Kafka, webhooks, etc.).

@@ -8,7 +8,7 @@ from typing import Any
 
 
 class DataSource(ABC):
-    """Contract for all data sources in the stratum pipeline.
+    """Contract for all data sources in the calcine pipeline.
 
     A ``DataSource`` is responsible for fetching raw data for a given entity.
     The raw data format is completely source-defined — it might be a pandas

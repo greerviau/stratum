@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from stratum.schema import (
+from calcine.schema import (
     FeatureSchema,
     types,
 )
