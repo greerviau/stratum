@@ -657,7 +657,7 @@ class Pipeline:
         return await self.store.read(self.feature, entity_id)
 
     async def retrieve_batch(self, entity_ids: list[str]) -> dict[str, Any]:
-        """Read stored feature values for multiple entities.
+        """Read stored feature values for multiple entities concurrently.
 
         Entities with no stored value are silently omitted from the result.
 
@@ -668,13 +668,15 @@ class Pipeline:
             Dict mapping ``entity_id`` to feature value for every entity
             that has a stored value.
         """
-        results: dict[str, Any] = {}
-        for entity_id in entity_ids:
+
+        async def _try_read(entity_id: str) -> tuple[str, Any] | None:
             try:
-                results[entity_id] = await self.store.read(self.feature, entity_id)
+                return (entity_id, await self.store.read(self.feature, entity_id))
             except KeyError:
-                pass
-        return results
+                return None
+
+        pairs = await asyncio.gather(*[_try_read(eid) for eid in entity_ids])
+        return dict(p for p in pairs if p is not None)
 
     # ------------------------------------------------------------------
     # Synchronous convenience wrappers
