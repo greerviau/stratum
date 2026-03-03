@@ -63,7 +63,9 @@ async def demo_nan() -> None:
     class NanFeature(Feature):
         schema = FeatureSchema({"score": types.Float64(nullable=False)})
 
-        async def extract(self, raw: pd.DataFrame, context: dict, entity_id: str | None = None) -> dict:
+        async def extract(
+            self, raw: pd.DataFrame, context: dict, entity_id: str | None = None
+        ) -> dict:
             # mean() on an empty group returns NaN
             return {"score": float(raw["amount"].mean())}
 
@@ -90,7 +92,9 @@ async def demo_nan() -> None:
     class SafeNanFeature(Feature):
         schema = FeatureSchema({"score": types.Float64(nullable=False)})
 
-        async def extract(self, raw: pd.DataFrame, context: dict, entity_id: str | None = None) -> dict:
+        async def extract(
+            self, raw: pd.DataFrame, context: dict, entity_id: str | None = None
+        ) -> dict:
             return {"score": float(raw["amount"].mean())}
 
         async def post_extract(self, result: dict) -> dict:
@@ -126,7 +130,9 @@ async def demo_empty_source() -> None:
     class UnguardedFeature(Feature):
         schema = FeatureSchema({"mean": types.Float64(nullable=False)})
 
-        async def extract(self, raw: pd.DataFrame, context: dict, entity_id: str | None = None) -> dict:
+        async def extract(
+            self, raw: pd.DataFrame, context: dict, entity_id: str | None = None
+        ) -> dict:
             # This does NOT raise on empty — it returns NaN (see weak point A)
             return {"mean": float(raw["amount"].mean())}
 
@@ -150,7 +156,9 @@ async def demo_empty_source() -> None:
     class GuardedFeature(Feature):
         schema = FeatureSchema({"mean": types.Float64(nullable=False)})
 
-        async def extract(self, raw: pd.DataFrame, context: dict, entity_id: str | None = None) -> dict:
+        async def extract(
+            self, raw: pd.DataFrame, context: dict, entity_id: str | None = None
+        ) -> dict:
             if raw.empty:
                 raise ValueError("No source data for this entity")
             return {"mean": float(raw["amount"].mean())}

@@ -63,14 +63,14 @@ from stratum.stores import MemoryStore
 # ---------------------------------------------------------------------------
 
 N_ENTITIES = 200
-EMBEDDING_DIM = 128        # output embedding dimension
-INPUT_DIM = 512            # input feature dimension
+EMBEDDING_DIM = 128  # output embedding dimension
+INPUT_DIM = 512  # input feature dimension
 
-READ_LATENCY = 0.003       # 3 ms per source read (DB / API fetch)
-EXTRACT_OVERHEAD = 0.002   # 2 ms per-call overhead for individual extract
+READ_LATENCY = 0.003  # 3 ms per source read (DB / API fetch)
+EXTRACT_OVERHEAD = 0.002  # 2 ms per-call overhead for individual extract
 EXTRACT_PER_ITEM = 0.0005  # 0.5 ms additional per item in individual extract
-BATCH_OVERHEAD = 0.005     # 5 ms per-call overhead for batch extract
-BATCH_PER_ITEM = 0.00005   # 0.05 ms per item in batch (amortised)
+BATCH_OVERHEAD = 0.005  # 5 ms per-call overhead for batch extract
+BATCH_PER_ITEM = 0.00005  # 0.05 ms per item in batch (amortised)
 
 # Shared weight matrix — represents a linear projection layer
 rng = np.random.default_rng(42)
@@ -78,8 +78,7 @@ WEIGHT_MATRIX = rng.standard_normal((INPUT_DIM, EMBEDDING_DIM)).astype(np.float3
 
 # Synthetic entity data: each entity has a random input vector
 ENTITY_DATA: dict[str, np.ndarray] = {
-    f"e{i:04d}": rng.standard_normal(INPUT_DIM).astype(np.float32)
-    for i in range(N_ENTITIES)
+    f"e{i:04d}": rng.standard_normal(INPUT_DIM).astype(np.float32) for i in range(N_ENTITIES)
 }
 
 ALL_IDS = sorted(ENTITY_DATA.keys())
@@ -137,7 +136,7 @@ class BatchEmbedding(Feature):
         await asyncio.sleep(BATCH_OVERHEAD + BATCH_PER_ITEM * n)
 
         # Vectorised projection: (N, INPUT_DIM) @ (INPUT_DIM, EMBEDDING_DIM) → (N, EMBEDDING_DIM)
-        batch_matrix = np.stack(raws)         # (N, INPUT_DIM)
+        batch_matrix = np.stack(raws)  # (N, INPUT_DIM)
         embeddings = batch_matrix @ WEIGHT_MATRIX  # (N, EMBEDDING_DIM)
 
         return [{"embedding": embeddings[i]} for i in range(n)]
@@ -171,9 +170,7 @@ async def run(
     elapsed = time.perf_counter() - t0
     throughput = report.success_count / elapsed
     print(
-        f"  {label:<42}  {elapsed:5.2f}s  "
-        f"({throughput:6.0f} entities/s)  "
-        f"ok={report.success_count}"
+        f"  {label:<42}  {elapsed:5.2f}s  ({throughput:6.0f} entities/s)  ok={report.success_count}"
     )
     return elapsed
 
@@ -192,7 +189,7 @@ async def main() -> None:
         f"  Batch extract_batch: {BATCH_OVERHEAD * 1000:.0f} ms overhead "
         f"+ {BATCH_PER_ITEM * 1000:.2f} ms/item\n"
         f"  → For batch_size=50: individual={50 * (EXTRACT_OVERHEAD + EXTRACT_PER_ITEM) * 1000:.0f} ms "
-        f"vs batch={( BATCH_OVERHEAD + BATCH_PER_ITEM * 50) * 1000:.1f} ms"
+        f"vs batch={(BATCH_OVERHEAD + BATCH_PER_ITEM * 50) * 1000:.1f} ms"
     )
 
     # ── Scenario 1: Serial individual ─────────────────────────────────────
@@ -205,22 +202,31 @@ async def main() -> None:
     header("2. Concurrent individual  (batch_size=1, concurrency=20)")
     print("   Reads overlap — 20 entities in flight at once.")
     print("   BUT extract() still called once per entity.\n")
-    t2 = await run(IndividualEmbedding(), "concurrent individual  (concurrency=20)",
-                   batch_size=1, concurrency=20)
+    t2 = await run(
+        IndividualEmbedding(),
+        "concurrent individual  (concurrency=20)",
+        batch_size=1,
+        concurrency=20,
+    )
 
     # ── Scenario 3: Serial batches ─────────────────────────────────────────
     header("3. Batch extract  (batch_size=50, concurrency=1)")
     print("   Reads within each batch happen concurrently.")
     print("   extract_batch() called 4× (200/50) instead of 200×.\n")
-    t3 = await run(BatchEmbedding(), "serial batches  (batch_size=50)",
-                   batch_size=50, concurrency=1)
+    t3 = await run(
+        BatchEmbedding(), "serial batches  (batch_size=50)", batch_size=50, concurrency=1
+    )
 
     # ── Scenario 4: Concurrent batches ────────────────────────────────────
     header("4. Batch + concurrent  (batch_size=50, concurrency=4)")
     print("   4 batches of 50 run at the same time.")
     print("   Reads AND compute are both parallelised.\n")
-    t4 = await run(BatchEmbedding(), "concurrent batches (batch_size=50, concurrency=4)",
-                   batch_size=50, concurrency=4)
+    t4 = await run(
+        BatchEmbedding(),
+        "concurrent batches (batch_size=50, concurrency=4)",
+        batch_size=50,
+        concurrency=4,
+    )
 
     # ── Summary ────────────────────────────────────────────────────────────
     print(f"\n{'=' * 60}")

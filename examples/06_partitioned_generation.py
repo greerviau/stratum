@@ -172,8 +172,7 @@ async def section_b() -> None:
     print(f"  Result : {report.success_count} OK  |  {report.failure_count} failed")
     print(f"  Time   : {fmt(elapsed)}")
     print(
-        f"  Expected speedup vs serial: "
-        f"~{len(SAMPLE) * RegionalAPISource.LATENCY / elapsed:.1f}x"
+        f"  Expected speedup vs serial: ~{len(SAMPLE) * RegionalAPISource.LATENCY / elapsed:.1f}x"
     )
 
 
@@ -189,7 +188,9 @@ async def section_c() -> None:
     print()
     print("  partition_by = lambda eid: eid.split('_')[1]")
     print(f"  → {REGIONS} partitions of {SENSORS_PER_REGION} sensors each")
-    print(f"  → expected time ≈ {SENSORS_PER_REGION * RegionalAPISource.LATENCY * 20:.1f}s / region")
+    print(
+        f"  → expected time ≈ {SENSORS_PER_REGION * RegionalAPISource.LATENCY * 20:.1f}s / region"
+    )
     print(f"    with {REGIONS} regions running concurrently")
 
     # Use all sensors for this section to make the partition structure clear
@@ -218,9 +219,7 @@ async def section_c() -> None:
         r = region_of(eid)
         regions_seen.setdefault(r, []).append(eid)
 
-    ordering_ok = all(
-        grp == sorted(grp) for grp in regions_seen.values()
-    )
+    ordering_ok = all(grp == sorted(grp) for grp in regions_seen.values())
     print(f"  Within-region order preserved: {ordering_ok}")
 
 

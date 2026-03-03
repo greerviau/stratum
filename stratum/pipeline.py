@@ -107,9 +107,7 @@ def _run_batch_in_executor(
 
         valid_ids = [entity_ids[i] for i in valid_indices]
         valid_entity_ctxs = (
-            [entity_contexts[i] for i in valid_indices]
-            if entity_contexts is not None
-            else None
+            [entity_contexts[i] for i in valid_indices] if entity_contexts is not None else None
         )
 
         # --- Batch extract ---
@@ -310,22 +308,20 @@ class Pipeline:
         # --- Executor path: steps 2-4 run in thread/process; store.write stays here ---
         if executor is not None:
             batch_entity_contexts: list[dict[str, Any]] | None = (
-                [{**context, **context_fn(eid)} for eid in to_process]
-                if context_fn
-                else None
+                [{**context, **context_fn(eid)} for eid in to_process] if context_fn else None
             )
             loop = asyncio.get_running_loop()
             try:
-                slot_results: list[tuple[Any, list[str]] | BaseException] = (
-                    await loop.run_in_executor(
-                        executor,
-                        _run_batch_in_executor,
-                        self.source,
-                        self.feature,
-                        to_process,
-                        context,
-                        batch_entity_contexts,
-                    )
+                slot_results: list[
+                    tuple[Any, list[str]] | BaseException
+                ] = await loop.run_in_executor(
+                    executor,
+                    _run_batch_in_executor,
+                    self.source,
+                    self.feature,
+                    to_process,
+                    context,
+                    batch_entity_contexts,
                 )
             except Exception as exc:
                 for entity_id in to_process:
@@ -396,9 +392,7 @@ class Pipeline:
 
         # --- 4. Batch extract ---
         entity_contexts: list[dict[str, Any]] | None = (
-            [{**context, **context_fn(eid)} for eid in valid_ids]
-            if context_fn
-            else None
+            [{**context, **context_fn(eid)} for eid in valid_ids] if context_fn else None
         )
         try:
             batch_results: list[Any] = await self.feature.extract_batch(
@@ -608,8 +602,14 @@ class Pipeline:
                 if batch_size == 1:
                     for entity_id in entities:
                         await self._process_entity(
-                            entity_id, partition_ctx, context_fn, overwrite, report,
-                            feature_name, store_results, executor,
+                            entity_id,
+                            partition_ctx,
+                            context_fn,
+                            overwrite,
+                            report,
+                            feature_name,
+                            store_results,
+                            executor,
                         )
                         completed += 1
                         if on_progress is not None:

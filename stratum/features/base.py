@@ -35,9 +35,7 @@ class Feature(ABC):
     schema: ClassVar[FeatureSchema | None] = None
 
     @abstractmethod
-    async def extract(
-        self, raw: Any, context: dict, entity_id: str | None = None
-    ) -> Any:
+    async def extract(self, raw: Any, context: dict, entity_id: str | None = None) -> Any:
         """Extract the feature value from raw source data.
 
         Args:

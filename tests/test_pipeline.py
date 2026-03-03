@@ -1002,9 +1002,7 @@ async def test_executor_per_entity_success(df):
 
     pipeline = Pipeline(source=DataFrameSource(df), feature=MeanFeature(), store=MemoryStore())
     with ThreadPoolExecutor(max_workers=2) as pool:
-        report = await pipeline.generate(
-            entity_ids=["u1", "u2"], executor=pool, concurrency=2
-        )
+        report = await pipeline.generate(entity_ids=["u1", "u2"], executor=pool, concurrency=2)
 
     assert report.success_count == 2
     assert report.failure_count == 0
@@ -1018,9 +1016,7 @@ async def test_executor_exception_recorded_as_failure(df):
     """Exceptions raised inside the executor should appear in report.failed."""
     from concurrent.futures import ThreadPoolExecutor
 
-    pipeline = Pipeline(
-        source=DataFrameSource(df), feature=FailingFeature(), store=MemoryStore()
-    )
+    pipeline = Pipeline(source=DataFrameSource(df), feature=FailingFeature(), store=MemoryStore())
     with ThreadPoolExecutor(max_workers=2) as pool:
         report = await pipeline.generate(entity_ids=["u1"], executor=pool)
 
@@ -1040,9 +1036,7 @@ async def test_executor_validation_failure_recorded(df):
         async def extract(self, raw, context, entity_id=None):
             return {"mean_value": "not_a_float"}
 
-    pipeline = Pipeline(
-        source=DataFrameSource(df), feature=WrongTypeFeature(), store=MemoryStore()
-    )
+    pipeline = Pipeline(source=DataFrameSource(df), feature=WrongTypeFeature(), store=MemoryStore())
     with ThreadPoolExecutor(max_workers=1) as pool:
         report = await pipeline.generate(entity_ids=["u1"], executor=pool)
 
@@ -1207,5 +1201,5 @@ async def test_partition_context_fn_shared_context_is_base(wide_df):
     )
 
     ctx = feature.received["u1"]
-    assert ctx["shared_key"] == "shared"        # shared context preserved
-    assert ctx["partition_key"] == "p"          # partition_context_fn shadows
+    assert ctx["shared_key"] == "shared"  # shared context preserved
+    assert ctx["partition_key"] == "p"  # partition_context_fn shadows

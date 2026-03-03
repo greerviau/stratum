@@ -69,9 +69,7 @@ class FeatureStore(ABC):
             NotImplementedError: If this store is read-only.
             StoreError: If the write operation fails.
         """
-        raise NotImplementedError(
-            f"{type(self).__name__} does not support write operations."
-        )
+        raise NotImplementedError(f"{type(self).__name__} does not support write operations.")
 
     @abstractmethod
     async def read(self, feature: Feature, entity_id: str) -> Any:
@@ -103,9 +101,7 @@ class FeatureStore(ABC):
         Raises:
             NotImplementedError: If this store does not support existence checks.
         """
-        raise NotImplementedError(
-            f"{type(self).__name__} does not support exists operations."
-        )
+        raise NotImplementedError(f"{type(self).__name__} does not support exists operations.")
 
     async def delete(self, feature: Feature, entity_id: str) -> None:
         """Delete the stored feature value for an entity.
@@ -119,9 +115,7 @@ class FeatureStore(ABC):
             KeyError: If no value exists for ``(feature, entity_id)``.
             StoreError: If the delete operation fails.
         """
-        raise NotImplementedError(
-            f"{type(self).__name__} does not support delete operations."
-        )
+        raise NotImplementedError(f"{type(self).__name__} does not support delete operations.")
 
     def _feature_key(self, feature: Feature) -> str:
         """Return a stable string namespace key for a feature instance.
