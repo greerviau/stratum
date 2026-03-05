@@ -18,8 +18,8 @@ class Feature(ABC):
     Subclasses must implement :meth:`extract`.  :meth:`validate` runs
     automatically after extraction if ``schema`` is set.
 
-    ``schema`` validates each record in the result.  For fan-out features,
-    ``parent_schema`` validates ``ExtractionResult.metadata``.
+    ``schema`` validates each record in the result.
+    ``metadata_schema`` validates ``ExtractionResult.metadata``.
 
     Single-record example::
 
@@ -32,7 +32,7 @@ class Feature(ABC):
     Fan-out example::
 
         class SegmentFeature(Feature):
-            parent_schema = FeatureSchema({"duration_s": types.Float64(nullable=False)})
+            metadata_schema = FeatureSchema({"duration_s": types.Float64(nullable=False)})
             schema = FeatureSchema({"rms": types.Float64(nullable=False)})
 
             async def extract(self, raw, context, entity_id=None):
@@ -44,10 +44,12 @@ class Feature(ABC):
     """
 
     schema: ClassVar[FeatureSchema | None] = None
-    parent_schema: ClassVar[FeatureSchema | None] = None
+    metadata_schema: ClassVar[FeatureSchema | None] = None
 
     @abstractmethod
-    async def extract(self, raw: Any, context: dict, entity_id: str | None = None) -> ExtractionResult:
+    async def extract(
+        self, raw: Any, context: dict, entity_id: str | None = None
+    ) -> ExtractionResult:
         """Extract the feature value from raw source data.
 
         Args:

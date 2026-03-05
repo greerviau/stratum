@@ -32,7 +32,7 @@ class SimpleSource(DataSource):
 class SegmentFeature(Feature):
     """Fan-out: one recording → N segment records with parent metadata."""
 
-    parent_schema = FeatureSchema(
+    metadata_schema = FeatureSchema(
         {
             "sample_rate": types.Int64(nullable=False),
             "speaker_id": types.String(nullable=True),
@@ -45,7 +45,9 @@ class SegmentFeature(Feature):
         }
     )
 
-    async def extract(self, raw: dict, context: dict, entity_id: str | None = None) -> ExtractionResult:
+    async def extract(
+        self, raw: dict, context: dict, entity_id: str | None = None
+    ) -> ExtractionResult:
         return ExtractionResult(
             metadata={"sample_rate": raw["sample_rate"], "speaker_id": raw.get("speaker_id")},
             records={
@@ -60,7 +62,9 @@ class NoMetaSegmentFeature(Feature):
 
     schema = FeatureSchema({"value": types.Float64(nullable=False)})
 
-    async def extract(self, raw: dict, context: dict, entity_id: str | None = None) -> ExtractionResult:
+    async def extract(
+        self, raw: dict, context: dict, entity_id: str | None = None
+    ) -> ExtractionResult:
         return ExtractionResult(
             records={f"{entity_id}/{i}": {"value": v} for i, v in enumerate(raw["values"])}
         )
@@ -69,10 +73,12 @@ class NoMetaSegmentFeature(Feature):
 class BadMetaFeature(Feature):
     """Fan-out that returns invalid parent metadata."""
 
-    parent_schema = FeatureSchema({"count": types.Int64(nullable=False)})
+    metadata_schema = FeatureSchema({"count": types.Int64(nullable=False)})
     schema = FeatureSchema({"v": types.Float64(nullable=False)})
 
-    async def extract(self, raw: dict, context: dict, entity_id: str | None = None) -> ExtractionResult:
+    async def extract(
+        self, raw: dict, context: dict, entity_id: str | None = None
+    ) -> ExtractionResult:
         return ExtractionResult(
             metadata={"count": "not-an-int"},  # should fail validation
             records={f"{entity_id}/0": {"v": 1.0}},
@@ -84,7 +90,9 @@ class BadRecordFeature(Feature):
 
     schema = FeatureSchema({"v": types.Float64(nullable=False)})
 
-    async def extract(self, raw: dict, context: dict, entity_id: str | None = None) -> ExtractionResult:
+    async def extract(
+        self, raw: dict, context: dict, entity_id: str | None = None
+    ) -> ExtractionResult:
         return ExtractionResult(
             records={
                 f"{entity_id}/0": {"v": 1.0},
@@ -96,7 +104,9 @@ class BadRecordFeature(Feature):
 class RaisingFeature(Feature):
     """Feature that raises during extract."""
 
-    async def extract(self, raw: dict, context: dict, entity_id: str | None = None) -> ExtractionResult:
+    async def extract(
+        self, raw: dict, context: dict, entity_id: str | None = None
+    ) -> ExtractionResult:
         raise ValueError("boom")
 
 

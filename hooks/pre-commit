@@ -1,0 +1,12 @@
+#!/bin/sh
+# Pre-commit hook: auto-format and lint, then re-stage fixed files.
+set -e
+
+echo "Running ruff format..."
+.venv/bin/ruff format calcine/ tests/
+
+echo "Running ruff check --fix..."
+.venv/bin/ruff check --fix calcine/ tests/
+
+# Re-stage any files that ruff modified so they're included in the commit
+git add -u calcine/ tests/

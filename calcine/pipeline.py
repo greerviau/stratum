@@ -27,8 +27,8 @@ async def _validate_extraction(feature: Feature, result: ExtractionResult) -> li
     For results with more than one record, errors are prefixed with the
     sub-entity ID so callers can identify which record failed.
     """
-    if feature.parent_schema is not None and result.metadata is not None:
-        errors = feature.parent_schema.validate(result.metadata)
+    if feature.metadata_schema is not None and result.metadata is not None:
+        errors = feature.metadata_schema.validate(result.metadata)
         if errors:
             return errors
     multi = len(result.records) > 1
@@ -411,7 +411,9 @@ class Pipeline:
             [entity_ctxs[eid] for eid in valid_ids] if context_fn else None
         )
         try:
-            batch_results: list[ExtractionResult | BaseException] = await self.feature.extract_batch(
+            batch_results: list[
+                ExtractionResult | BaseException
+            ] = await self.feature.extract_batch(
                 valid_raws,
                 context,
                 entity_ids=valid_ids,

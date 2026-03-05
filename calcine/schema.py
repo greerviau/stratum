@@ -193,6 +193,66 @@ class AnyType(FeatureType):
         return []
 
 
+class List(FeatureType):
+    """Typed list where every element must satisfy *item_type*.
+
+    Supports nesting::
+
+        List(item_type=String())
+        List(item_type=Dict(key_type=String(), value_type=Float64()))
+    """
+
+    def __init__(
+        self,
+        item_type: FeatureType,
+        nullable: bool = True,
+        default: Any = None,
+    ) -> None:
+        super().__init__(nullable=nullable, default=default)
+        self.item_type = item_type
+
+    def _validate_value(self, value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return [f"Expected list, got {type(value).__name__}"]
+        errors: list[str] = []
+        for i, item in enumerate(value):
+            for err in self.item_type.validate(item):
+                errors.append(f"Index {i}: {err}")
+        return errors
+
+
+class Dict(FeatureType):
+    """Typed dict where every key must satisfy *key_type* and every value *value_type*.
+
+    Supports nesting::
+
+        Dict(key_type=String(), value_type=Int64())
+        Dict(key_type=String(), value_type=List(item_type=Float64()))
+    """
+
+    def __init__(
+        self,
+        key_type: FeatureType,
+        value_type: FeatureType,
+        nullable: bool = True,
+        default: Any = None,
+    ) -> None:
+        super().__init__(nullable=nullable, default=default)
+        self.key_type = key_type
+        self.value_type = value_type
+
+    def _validate_value(self, value: Any) -> list[str]:
+        if not isinstance(value, dict):
+            return [f"Expected dict, got {type(value).__name__}"]
+        errors: list[str] = []
+        for k, v in value.items():
+            for err in self.key_type.validate(k):
+                errors.append(f"Key {k!r} (key): {err}")
+            for err in self.value_type.validate(v):
+                errors.append(f"Key {k!r} (value): {err}")
+        return errors
+
+
 # ---------------------------------------------------------------------------
 # types namespace — mirrors the classes above for ergonomic imports
 # ---------------------------------------------------------------------------
@@ -220,6 +280,8 @@ class types:
     NDArray = NDArray
     Bytes = Bytes
     Any = AnyType
+    List = List
+    Dict = Dict
 
 
 # ---------------------------------------------------------------------------

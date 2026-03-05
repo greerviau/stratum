@@ -271,3 +271,104 @@ class TestFeatureSchema:
         """Fields present in data but not in schema are silently ignored."""
         schema = FeatureSchema({"score": types.Float64()})
         assert schema.validate({"score": 1.0, "extra": "ignored"}) == []
+
+
+# ---------------------------------------------------------------------------
+# List
+# ---------------------------------------------------------------------------
+
+
+class TestList:
+    def test_valid_list_of_strings(self):
+        t = types.List(item_type=types.String())
+        assert t.validate(["a", "b", "c"]) == []
+
+    def test_valid_empty_list(self):
+        t = types.List(item_type=types.Int64())
+        assert t.validate([]) == []
+
+    def test_invalid_item(self):
+        t = types.List(item_type=types.Int64())
+        errors = t.validate([1, "oops", 3])
+        assert len(errors) > 0
+        assert any("Index 1" in e for e in errors)
+
+    def test_not_a_list(self):
+        t = types.List(item_type=types.String())
+        errors = t.validate("not a list")
+        assert len(errors) > 0
+
+    def test_none_nullable(self):
+        t = types.List(item_type=types.String(), nullable=True)
+        assert t.validate(None) == []
+
+    def test_none_not_nullable(self):
+        t = types.List(item_type=types.String(), nullable=False)
+        errors = t.validate(None)
+        assert len(errors) > 0
+
+    def test_nested_list_of_lists(self):
+        t = types.List(item_type=types.List(item_type=types.Float64()))
+        assert t.validate([[1.0, 2.0], [3.0]]) == []
+
+    def test_nested_list_of_lists_invalid(self):
+        t = types.List(item_type=types.List(item_type=types.Float64()))
+        errors = t.validate([[1.0], ["bad"]])
+        assert len(errors) > 0
+
+    def test_all_items_validated(self):
+        t = types.List(item_type=types.Int64())
+        errors = t.validate(["x", "y", "z"])
+        assert len(errors) == 3
+
+
+# ---------------------------------------------------------------------------
+# Dict
+# ---------------------------------------------------------------------------
+
+
+class TestDict:
+    def test_valid_str_to_int(self):
+        t = types.Dict(key_type=types.String(), value_type=types.Int64())
+        assert t.validate({"a": 1, "b": 2}) == []
+
+    def test_valid_empty_dict(self):
+        t = types.Dict(key_type=types.String(), value_type=types.Float64())
+        assert t.validate({}) == []
+
+    def test_invalid_value(self):
+        t = types.Dict(key_type=types.String(), value_type=types.Int64())
+        errors = t.validate({"a": "not_int"})
+        assert len(errors) > 0
+        assert any("'a'" in e and "value" in e for e in errors)
+
+    def test_not_a_dict(self):
+        t = types.Dict(key_type=types.String(), value_type=types.Int64())
+        errors = t.validate([1, 2])
+        assert len(errors) > 0
+
+    def test_none_nullable(self):
+        t = types.Dict(key_type=types.String(), value_type=types.Int64(), nullable=True)
+        assert t.validate(None) == []
+
+    def test_none_not_nullable(self):
+        t = types.Dict(key_type=types.String(), value_type=types.Int64(), nullable=False)
+        assert len(t.validate(None)) > 0
+
+    def test_nested_dict_of_lists(self):
+        t = types.Dict(key_type=types.String(), value_type=types.List(item_type=types.Float64()))
+        assert t.validate({"scores": [1.0, 2.5], "weights": [0.3]}) == []
+
+    def test_nested_dict_of_lists_invalid(self):
+        t = types.Dict(key_type=types.String(), value_type=types.List(item_type=types.Float64()))
+        errors = t.validate({"scores": ["bad"]})
+        assert len(errors) > 0
+
+    def test_nested_list_of_dicts(self):
+        t = types.List(item_type=types.Dict(key_type=types.String(), value_type=types.Float64()))
+        assert t.validate([{"x": 1.0}, {"y": 2.0}]) == []
+
+    def test_multiple_bad_values(self):
+        t = types.Dict(key_type=types.String(), value_type=types.Int64())
+        errors = t.validate({"a": "bad", "b": "also_bad"})
+        assert len(errors) == 2

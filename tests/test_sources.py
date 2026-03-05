@@ -230,7 +230,9 @@ async def test_bundle_in_pipeline(sample_df):
         async def extract(self, raw: dict, context: dict, entity_id=None) -> ExtractionResult:
             frame = raw["purchases"]
             multiplier = raw["config"]["multiplier"]
-            return ExtractionResult.of(entity_id, {"value": float(frame["amount"].mean()) * multiplier})
+            return ExtractionResult.of(
+                entity_id, {"value": float(frame["amount"].mean()) * multiplier}
+            )
 
     pipeline = Pipeline(
         source=SourceBundle(

@@ -23,7 +23,9 @@ from calcine.stores import MemoryStore
 class MeanFeature(Feature):
     schema = FeatureSchema({"mean_value": types.Float64(nullable=False)})
 
-    async def extract(self, raw: pd.DataFrame, context: dict, entity_id: str | None = None) -> ExtractionResult:
+    async def extract(
+        self, raw: pd.DataFrame, context: dict, entity_id: str | None = None
+    ) -> ExtractionResult:
         if raw.empty:
             raise ValueError("No rows for entity")
         return ExtractionResult.of(entity_id, {"mean_value": float(raw["amount"].mean())})
@@ -40,7 +42,9 @@ class SlowFeature(Feature):
     def __init__(self, order_log: list[str]) -> None:
         self.order_log = order_log
 
-    async def extract(self, raw: pd.DataFrame, context: dict, entity_id: str | None = None) -> ExtractionResult:
+    async def extract(
+        self, raw: pd.DataFrame, context: dict, entity_id: str | None = None
+    ) -> ExtractionResult:
         self.order_log.append(f"start:{entity_id or '?'}")
         await asyncio.sleep(0)  # yield to event loop
         self.order_log.append(f"end:{entity_id or '?'}")
@@ -173,7 +177,6 @@ async def test_generate_context_forwarded_to_extract(df):
     await pipeline.agenerate(entity_ids=["u1"], context=ctx)
 
     assert received == ctx
-
 
 
 # ---------------------------------------------------------------------------
@@ -595,7 +598,10 @@ class BatchTrackingFeature(Feature):
 
     async def extract_batch(self, raws, context, entity_ids=None, entity_contexts=None):
         self.calls.append(len(raws))
-        return [ExtractionResult.of(eid, {"v": float(i)}) for i, eid in enumerate(entity_ids or range(len(raws)))]
+        return [
+            ExtractionResult.of(eid, {"v": float(i)})
+            for i, eid in enumerate(entity_ids or range(len(raws)))
+        ]
 
 
 class PartialFailBatchFeature(Feature):
@@ -607,7 +613,7 @@ class PartialFailBatchFeature(Feature):
     async def extract_batch(self, raws, context, entity_ids=None, entity_contexts=None):
         results = []
         eids = entity_ids or [None] * len(raws)
-        for i, (_raw, eid) in enumerate(zip(raws, eids)):
+        for i, (_raw, eid) in enumerate(zip(raws, eids, strict=True)):
             if i % 2 == 1:
                 results.append(ValueError(f"Simulated failure for item {i}"))
             else:

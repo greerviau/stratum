@@ -20,7 +20,7 @@ class ExtractionResult:
             features, the key is the source ``entity_id``; for fan-out features,
             keys are sub-entity IDs (e.g. ``"recording_001/0"``).
         metadata: Optional parent-level data stored under the source
-            ``entity_id``.  Validated against ``Feature.parent_schema`` if set.
+            ``entity_id``.  Validated against ``Feature.metadata_schema`` if set.
             Only relevant for fan-out features; ``None`` for single-record
             features.
 
