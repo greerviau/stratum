@@ -424,15 +424,12 @@ async def test_generate_overwrite_false_progress_includes_skips(df):
 
 @pytest.mark.asyncio
 async def test_generate_store_results_false_values_are_none(df):
-    """store_results=False: succeeded keys exist but values are None."""
+    """store_results=False: success_count is correct but succeeded is empty."""
     pipeline = Pipeline(source=DataFrameSource(df), feature=MeanFeature(), store=MemoryStore())
     report = await pipeline.agenerate(entity_ids=["u1", "u2"], store_results=False)
 
     assert report.success_count == 2
-    assert "u1" in report.succeeded
-    assert "u2" in report.succeeded
-    assert report.succeeded["u1"] is None
-    assert report.succeeded["u2"] is None
+    assert len(report.succeeded) == 0
 
 
 @pytest.mark.asyncio
@@ -468,7 +465,7 @@ async def test_generate_store_results_false_with_batch_size(wide_df):
     report = await pipeline.agenerate(entity_ids=ids, batch_size=3, store_results=False)
 
     assert report.success_count == 6
-    assert all(v is None for v in report.succeeded.values())
+    assert len(report.succeeded) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -492,7 +489,7 @@ async def test_generate_on_progress_call_count(df):
 
 
 @pytest.mark.asyncio
-async def test_generate_on_progress_total_matches_entity_count(wide_df):
+async def test_generate_on_progress_total_matches_success_count(wide_df):
     """total reported to on_progress matches the number of entities."""
     totals: list[int] = []
     pipeline = Pipeline(source=DataFrameSource(wide_df), feature=MeanFeature(), store=MemoryStore())
@@ -838,25 +835,80 @@ async def test_retrieve_batch(df):
 
 def test_report_counts():
     report = GenerationReport(
-        succeeded={"a": 1, "b": 2},
         failed={"c": ["err"]},
         skipped={"d"},
+        success_count=2,
+        record_count=3,
     )
     assert report.success_count == 2
+    assert report.record_count == 3
     assert report.failure_count == 1
     assert report.skip_count == 1
 
 
 def test_report_repr():
-    report = GenerationReport(succeeded={"a": 1}, failed={}, skipped={"b"})
-    assert "succeeded=1" in repr(report)
-    assert "failed=0" in repr(report)
-    assert "skipped=1" in repr(report)
+    report = GenerationReport(success_count=1, record_count=2, skipped={"b"})
+    r = repr(report)
+    assert "entities=1" in r
+    assert "records=2" in r
+    assert "skipped=1" in r
+    assert "duration=" in r
 
 
 def test_report_skipped_default_empty():
     report = GenerationReport()
     assert report.skipped == set()
+
+
+def test_report_total_count():
+    report = GenerationReport(
+        failed={"c": ["err"]},
+        skipped={"d"},
+        success_count=2,
+        record_count=2,
+    )
+    assert report.total_count == 4
+    assert len(report) == 4
+
+
+def test_report_throughput():
+    report = GenerationReport(success_count=100, duration_s=2.0)
+    assert report.throughput == 50.0
+
+
+def test_report_throughput_zero_duration():
+    report = GenerationReport(success_count=10, duration_s=0.0)
+    assert report.throughput == 0.0
+
+
+def test_report_error_summary_groups_by_message():
+    report = GenerationReport(
+        failed={
+            "u1": ["Field 'score': Value is NaN"],
+            "u2": ["Field 'score': Value is NaN"],
+            "u3": ["KeyError: 'missing'"],
+        }
+    )
+    summary = report.error_summary()
+    assert summary["Field 'score': Value is NaN"] == ["u1", "u2"]
+    assert summary["KeyError: 'missing'"] == ["u3"]
+
+
+def test_report_error_summary_ordered_by_count():
+    report = GenerationReport(
+        failed={
+            "u1": ["rare error"],
+            "u2": ["common error"],
+            "u3": ["common error"],
+            "u4": ["common error"],
+        }
+    )
+    keys = list(report.error_summary().keys())
+    assert keys[0] == "common error"
+
+
+def test_report_error_summary_empty():
+    assert GenerationReport().error_summary() == {}
 
 
 # ---------------------------------------------------------------------------

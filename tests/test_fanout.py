@@ -209,7 +209,8 @@ async def test_fanout_store_results_false():
         store=store,
     )
     report = await pipeline.agenerate(entity_ids=["rec1"], store_results=False)
-    assert report.succeeded["rec1"] is None
+    assert report.success_count == 1
+    assert len(report.succeeded) == 0
     # Data is still written to the store
     assert await store.aexists(SegmentFeature(), "rec1")
 

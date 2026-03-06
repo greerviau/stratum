@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Callable, Hashable
 from concurrent.futures import Executor
 from dataclasses import dataclass, field
@@ -159,25 +160,35 @@ class GenerationReport:
     """Summary of a ``Pipeline.generate()`` run.
 
     Attributes:
-        succeeded: Mapping of ``entity_id`` to extracted feature value for
-            every entity that was processed without error.  Values are
-            ``None`` when ``generate()`` is called with ``store_results=False``.
+        succeeded: Mapping of ``entity_id`` to :class:`~calcine.ExtractionResult`
+            for every entity that was processed without error.  Only populated
+            when ``generate()`` is called with ``store_results=True`` (default).
+            Use ``success_count`` to count successes regardless of *store_results*.
         failed: Mapping of ``entity_id`` to a list of error strings for
             every entity whose processing failed (source read error,
             extraction error, or schema violation).
+        exceptions: Mapping of ``entity_id`` to the raw ``BaseException`` for
+            failures caused by unhandled exceptions (not schema violations).
+            Useful for accessing the full traceback via
+            ``traceback.format_exception(report.exceptions[eid])``.
         skipped: Set of entity IDs that were skipped because a stored value
             already existed and ``overwrite=False`` was passed to
             ``generate()``.
+        success_count: Number of entities that succeeded.  Always populated
+            regardless of *store_results*.
+        record_count: Total records produced across all succeeded entities.
+            Equals *success_count* for single-record features; larger for
+            fan-out features.  Always populated.
+        duration_s: Wall-clock seconds for the entire ``generate()`` call.
     """
 
-    succeeded: dict[str, Any] = field(default_factory=dict)
+    succeeded: dict[str, ExtractionResult] = field(default_factory=dict)
     failed: dict[str, list[str]] = field(default_factory=dict)
+    exceptions: dict[str, BaseException] = field(default_factory=dict)
     skipped: set[str] = field(default_factory=set)
-
-    @property
-    def success_count(self) -> int:
-        """Number of successfully processed entities."""
-        return len(self.succeeded)
+    success_count: int = 0
+    record_count: int = 0
+    duration_s: float = 0.0
 
     @property
     def failure_count(self) -> int:
@@ -189,11 +200,94 @@ class GenerationReport:
         """Number of entities skipped because a value already existed in the store."""
         return len(self.skipped)
 
+    @property
+    def total_count(self) -> int:
+        """Total entities touched: succeeded + failed + skipped."""
+        return self.success_count + self.failure_count + self.skip_count
+
+    @property
+    def throughput(self) -> float:
+        """Successfully processed entities per second. ``0.0`` if duration is zero."""
+        return self.success_count / self.duration_s if self.duration_s > 0 else 0.0
+
+    def __len__(self) -> int:
+        return self.total_count
+
+    def error_summary(self) -> dict[str, list[str]]:
+        """Group failed entities by their error message.
+
+        Returns a dict mapping each unique error string to the list of
+        entity IDs that produced it.  Useful for diagnosing systematic
+        failures — e.g. 500 entities all failing with the same schema
+        violation shows up as one entry rather than 500.
+
+        Returns:
+            ``{error_message: [entity_id, ...]}``, ordered by descending
+            count (most common error first).
+        """
+        groups: dict[str, list[str]] = {}
+        for eid, errors in self.failed.items():
+            key = "; ".join(errors)
+            groups.setdefault(key, []).append(eid)
+        return dict(sorted(groups.items(), key=lambda kv: len(kv[1]), reverse=True))
+
     def __repr__(self) -> str:
         return (
-            f"GenerationReport(succeeded={self.success_count}, "
-            f"failed={self.failure_count}, skipped={self.skip_count})"
+            f"GenerationReport(entities={self.success_count}, "
+            f"records={self.record_count}, "
+            f"failed={self.failure_count}, skipped={self.skip_count}, "
+            f"duration={self.duration_s:.2f}s)"
         )
+
+    def to_dataframe(self) -> Any:
+        """Export a pandas DataFrame with one row per entity.
+
+        Requires pandas (``pip install calcine[parquet]``).
+
+        Columns: ``entity_id``, ``status`` ("succeeded" / "failed" / "skipped"),
+        ``record_count`` (int or ``None``), ``error`` (str or ``None``).
+
+        Note: succeeded rows are only present when ``store_results=True`` was
+        used during ``generate()``.
+
+        Raises:
+            ImportError: If pandas is not installed.
+        """
+        try:
+            import pandas as pd
+        except ImportError as err:
+            raise ImportError(
+                "pandas is required for to_dataframe(); install with: pip install calcine[parquet]"
+            ) from err
+        rows: list[dict[str, Any]] = []
+        for eid, result in self.succeeded.items():
+            rows.append(
+                {
+                    "entity_id": eid,
+                    "status": "succeeded",
+                    "record_count": len(result.records),
+                    "error": None,
+                }
+            )
+        for eid, errors in self.failed.items():
+            rows.append(
+                {
+                    "entity_id": eid,
+                    "status": "failed",
+                    "record_count": None,
+                    "error": "; ".join(errors),
+                }
+            )
+        for eid in self.skipped:
+            rows.append(
+                {
+                    "entity_id": eid,
+                    "status": "skipped",
+                    "record_count": None,
+                    "error": None,
+                }
+            )
+        return pd.DataFrame(rows)
 
 
 class Pipeline:
@@ -270,13 +364,17 @@ class Pipeline:
                 return
 
             await self.store.awrite(self.feature, entity_id, result, context=entity_ctx)
-            report.succeeded[entity_id] = result if store_results else None
+            report.success_count += 1
+            report.record_count += len(result.records)
+            if store_results:
+                report.succeeded[entity_id] = result
 
         except Exception as exc:
             report.failed[entity_id] = [
                 f"Unhandled exception in pipeline for feature '{feature_name}', "
                 f"entity '{entity_id}': {type(exc).__name__}: {exc}"
             ]
+            report.exceptions[entity_id] = exc
 
     async def _process_batch(
         self,
@@ -312,6 +410,7 @@ class Pipeline:
                     f"Unhandled exception in pipeline for feature '{feature_name}', "
                     f"entity '{entity_id}': {type(exc).__name__}: {exc}"
                 ]
+                report.exceptions[entity_id] = exc
                 if on_entity_done is not None:
                     on_entity_done()
                 continue
@@ -344,6 +443,7 @@ class Pipeline:
                         f"Unhandled exception in pipeline for feature '{feature_name}', "
                         f"entity '{entity_id}': {type(exc).__name__}: {exc}"
                     ]
+                    report.exceptions[entity_id] = exc
                     if on_entity_done is not None:
                         on_entity_done()
                 return
@@ -357,6 +457,7 @@ class Pipeline:
                         f"Unhandled exception in pipeline for feature '{feature_name}', "
                         f"entity '{entity_id}': {type(slot).__name__}: {slot}"
                     ]
+                    report.exceptions[entity_id] = slot
                 else:
                     result, errors = slot
                     if errors:
@@ -366,12 +467,16 @@ class Pipeline:
                             await self.store.awrite(
                                 self.feature, entity_id, result, context=entity_ctx
                             )
-                            report.succeeded[entity_id] = result if store_results else None
+                            report.success_count += 1
+                            report.record_count += len(result.records)
+                            if store_results:
+                                report.succeeded[entity_id] = result
                         except Exception as exc:
                             report.failed[entity_id] = [
                                 f"Unhandled exception in pipeline for feature '{feature_name}', "
                                 f"entity '{entity_id}': {type(exc).__name__}: {exc}"
                             ]
+                            report.exceptions[entity_id] = exc
                 if on_entity_done is not None:
                     on_entity_done()
             return
@@ -397,6 +502,7 @@ class Pipeline:
                     f"Unhandled exception in pipeline for feature '{feature_name}', "
                     f"entity '{entity_id}': {type(raw).__name__}: {raw}"
                 ]
+                report.exceptions[entity_id] = raw
                 if on_entity_done is not None:
                     on_entity_done()
                 continue
@@ -426,6 +532,7 @@ class Pipeline:
                     f"Unhandled exception in pipeline for feature '{feature_name}', "
                     f"entity '{entity_id}': {type(exc).__name__}: {exc}"
                 ]
+                report.exceptions[entity_id] = exc
                 if on_entity_done is not None:
                     on_entity_done()
             return
@@ -437,6 +544,7 @@ class Pipeline:
                     f"Unhandled exception in pipeline for feature '{feature_name}', "
                     f"entity '{entity_id}': {type(result).__name__}: {result}"
                 ]
+                report.exceptions[entity_id] = result
             else:
                 try:
                     errors = await _validate_extraction(self.feature, result)
@@ -446,12 +554,16 @@ class Pipeline:
                         await self.store.awrite(
                             self.feature, entity_id, result, context=entity_ctxs[entity_id]
                         )
-                        report.succeeded[entity_id] = result if store_results else None
+                        report.success_count += 1
+                        report.record_count += len(result.records)
+                        if store_results:
+                            report.succeeded[entity_id] = result
                 except Exception as exc:
                     report.failed[entity_id] = [
                         f"Unhandled exception in pipeline for feature '{feature_name}', "
                         f"entity '{entity_id}': {type(exc).__name__}: {exc}"
                     ]
+                    report.exceptions[entity_id] = exc
 
             if on_entity_done is not None:
                 on_entity_done()
@@ -609,6 +721,7 @@ class Pipeline:
         total = sum(len(v) for v in partition_map.values())
         completed = 0
         report = GenerationReport()
+        _t0 = time.perf_counter()
         feature_name = type(self.feature).__name__
         semaphore = asyncio.Semaphore(concurrency)
         # Only inject _partition_key when the caller explicitly grouped entities
@@ -664,6 +777,7 @@ class Pipeline:
         await asyncio.gather(
             *[run_partition(key, entities) for key, entities in partition_map.items()]
         )
+        report.duration_s = time.perf_counter() - _t0
         return report
 
     async def aretrieve(self, entity_id: str) -> Any:
