@@ -19,21 +19,19 @@ backend, with no lock-in on format or framework.
 
 ## Highlights
 
-- **Sync-first interface** — `pipeline.generate()` and `store.read()` are plain synchronous calls by default; async variants (`agenerate`, `aread`, …) are opt-in for callers already in an async context
+- **Pipeline orchestration** — concurrent entity processing with a semaphore cap; per-entity error isolation so valid results are always stored even when others fail; incremental generation skips already-stored entities; partition-by support for rate-limit-per-account and ordered-per-user scenarios
 - **Type-safe schemas** — validate scalars, strings, categoricals, ndarrays, bytes, lists, and dicts before anything hits the store; the same schema validates on read, making it a typed contract between feature producers and consumers
 - **Detailed reporting** — `GenerationReport` tracks successes, failures, and skips with per-phase timing (read / extract / write); `timing_summary()` surfaces p50/p95/max per phase so you can pinpoint bottlenecks; `error_summary()` groups failures by message; exports to a pandas DataFrame
 - **Fan-out extraction** — `extract()` returns an `ExtractionResult` with one or many records; each sub-entity is stored, validated, and retrievable independently
 - **Composable sources** — `SourceBundle` reads from multiple sources concurrently and delivers a single `dict` to `extract`; combine any data origins without changing the pipeline
-- **Never crashes on partial failure** — `generate()` isolates every per-entity error; valid entities are always written even when others fail
 - **Executor support** — offload CPU-bound extraction to thread or process pools via `executor=`; store writes always remain in the main process so all store backends work correctly
-- **No required pandas** — the core only needs `numpy`; pandas is optional
 
 ---
 
 ## Installation
 
 ```bash
-pip install calcine                  # core (numpy only)
+pip install calcine                  # core
 pip install "calcine[http]"          # + async HTTP source
 pip install "calcine[parquet]"       # + Parquet store
 pip install "calcine[dev]"           # + test/lint tools
