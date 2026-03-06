@@ -144,6 +144,46 @@ always populated regardless of `store_results`.
 
 ---
 
+## Per-phase timing
+
+`timing_summary()` returns p50, p95, max, mean, and total wall-clock seconds
+for each pipeline phase — source read, feature extract, and store write.
+Only succeeded entities contribute.
+
+```python
+report = pipeline.generate(entity_ids=ids)
+
+summary = report.timing_summary()
+# {"read": {"p50": 0.003, "p95": 0.018, "max": 0.12, "mean": 0.005, "total": 5.1},
+#  "extract": {...},
+#  "write": {...}}
+
+print(f"p95 read:    {summary['read']['p95']*1000:.1f} ms")
+print(f"p95 extract: {summary['extract']['p95']*1000:.1f} ms")
+print(f"p95 write:   {summary['write']['p95']*1000:.1f} ms")
+```
+
+This makes it easy to identify the bottleneck in a pipeline — if `read` dominates,
+look at the data source; if `extract` dominates, the feature computation is the
+bottleneck; if `write` dominates, look at store I/O.
+
+Raw per-entity timings are available in `report.phase_timings` if you need custom
+aggregation:
+
+```python
+import statistics
+report.phase_timings["extract"]          # list of floats (one per succeeded entity)
+statistics.median(report.phase_timings["read"])
+```
+
+### Batch mode note
+
+When using `batch_size > 1`, the `"extract"` time is the total `extract_batch()`
+duration divided by the batch size — a per-entity average, not an individually
+measured value.  `"read"` and `"write"` are always measured per entity.
+
+---
+
 ## Re-running failed entities
 
 `report.failed` is a plain dict, so retrying failures is straightforward:

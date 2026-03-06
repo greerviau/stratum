@@ -45,7 +45,7 @@ def _run_entity_in_executor(
     feature: Feature,
     entity_id: str,
     context: dict[str, Any],
-) -> tuple[ExtractionResult, list[str]]:
+) -> tuple[ExtractionResult, list[str], dict[str, float]]:
     """Run one entity's extract pipeline stages in a thread or process.
 
     Executes: ``source.read`` → ``feature.extract`` → validate.
@@ -54,18 +54,23 @@ def _run_entity_in_executor(
     process (preserving correct behaviour for in-memory and async stores).
 
     Returns:
-        ``(result, errors)`` where *errors* is non-empty on validation
-        failure and empty on success.
+        ``(result, errors, phase_times)`` where *errors* is non-empty on
+        validation failure and empty on success, and *phase_times* is a
+        dict with keys ``"read"`` and ``"extract"`` (wall-clock seconds).
 
     Raises:
         Any exception propagated from the pipeline stages.  The caller
         records it as an unhandled pipeline error.
     """
 
-    async def _work() -> tuple[ExtractionResult, list[str]]:
+    async def _work() -> tuple[ExtractionResult, list[str], dict[str, float]]:
+        t0 = time.perf_counter()
         raw = await source.read(entity_id=entity_id, context=context)
+        t1 = time.perf_counter()
         result = await feature.extract(raw, context, entity_id=entity_id)
-        return result, await _validate_extraction(feature, result)
+        t2 = time.perf_counter()
+        errors = await _validate_extraction(feature, result)
+        return result, errors, {"read": t1 - t0, "extract": t2 - t1}
 
     return asyncio.run(_work())
 
@@ -76,7 +81,7 @@ def _run_batch_in_executor(
     entity_ids: list[str],
     context: dict[str, Any],
     entity_contexts: list[dict[str, Any]] | None,
-) -> list[tuple[ExtractionResult, list[str]] | BaseException]:
+) -> list[tuple[ExtractionResult, list[str], dict[str, float]] | BaseException]:
     """Run one batch's extract pipeline stages in a thread or process.
 
     Mirrors the logic of ``Pipeline._process_batch`` steps 2–4
@@ -87,37 +92,51 @@ def _run_batch_in_executor(
     Returns:
         One entry per item in *entity_ids*, in order:
 
-        - ``(result, [])`` — success
-        - ``(result, errors_list)`` — validation failure
+        - ``(result, [], phase_times)`` — success
+        - ``(result, errors_list, phase_times)`` — validation failure
         - ``BaseException`` — unhandled error for that entity
+
+        *phase_times* contains ``"read"`` and ``"extract"`` seconds.
+        The ``"extract"`` value is the total ``extract_batch`` duration
+        divided by the number of valid entities (per-entity average).
 
     A whole-batch ``extract_batch`` failure is caught and stored as a
     ``BaseException`` in every valid slot, preserving the same per-entity
     failure isolation as the non-executor path.
     """
 
-    async def _work() -> list[tuple[ExtractionResult, list[str]] | BaseException]:
-        # --- Concurrent reads ---
-        raw_results: list[Any] = await asyncio.gather(
+    async def _work() -> list[tuple[ExtractionResult, list[str], dict[str, float]] | BaseException]:
+        # --- Concurrent reads (timed individually) ---
+        async def _timed_read(eid: str, ctx: dict) -> tuple[Any, float]:
+            t0 = time.perf_counter()
+            raw = await source.read(entity_id=eid, context=ctx)
+            return raw, time.perf_counter() - t0
+
+        raw_timed: list[tuple[Any, float] | BaseException] = await asyncio.gather(
             *[
-                source.read(
-                    entity_id=eid,
-                    context=entity_contexts[i] if entity_contexts is not None else context,
+                _timed_read(
+                    eid,
+                    entity_contexts[i] if entity_contexts is not None else context,
                 )
                 for i, eid in enumerate(entity_ids)
             ],
             return_exceptions=True,
         )
 
-        results: dict[int, tuple[ExtractionResult, list[str]] | BaseException] = {}
+        results: dict[
+            int, tuple[ExtractionResult, list[str], dict[str, float]] | BaseException
+        ] = {}
         valid_indices: list[int] = []
         valid_raws: list[Any] = []
+        read_times: dict[int, float] = {}
 
         # --- Filter read failures ---
-        for idx, (_eid, raw) in enumerate(zip(entity_ids, raw_results, strict=True)):
-            if isinstance(raw, BaseException):
-                results[idx] = raw
+        for idx, res in enumerate(raw_timed):
+            if isinstance(res, BaseException):
+                results[idx] = res
                 continue
+            raw, read_time = res
+            read_times[idx] = read_time
             valid_indices.append(idx)
             valid_raws.append(raw)
 
@@ -129,7 +148,8 @@ def _run_batch_in_executor(
             [entity_contexts[i] for i in valid_indices] if entity_contexts is not None else None
         )
 
-        # --- Batch extract ---
+        # --- Batch extract (timed; divide by batch size for per-entity average) ---
+        t_extract_0 = time.perf_counter()
         try:
             batch_results: list[ExtractionResult | BaseException] = await feature.extract_batch(
                 valid_raws, context, entity_ids=valid_ids, entity_contexts=valid_entity_ctxs
@@ -138,6 +158,7 @@ def _run_batch_in_executor(
             for idx in valid_indices:
                 results[idx] = exc
             return [results[i] for i in range(len(entity_ids))]
+        extract_time_each = (time.perf_counter() - t_extract_0) / len(valid_indices)
 
         # --- Validate ---
         for idx, result in zip(valid_indices, batch_results, strict=True):
@@ -146,7 +167,11 @@ def _run_batch_in_executor(
                 continue
             try:
                 errors = await _validate_extraction(feature, result)
-                results[idx] = (result, errors)
+                results[idx] = (
+                    result,
+                    errors,
+                    {"read": read_times.get(idx, 0.0), "extract": extract_time_each},
+                )
             except Exception as exc:
                 results[idx] = exc
 
@@ -180,6 +205,11 @@ class GenerationReport:
             Equals *success_count* for single-record features; larger for
             fan-out features.  Always populated.
         duration_s: Wall-clock seconds for the entire ``generate()`` call.
+        phase_timings: Raw per-entity wall-clock seconds for each pipeline
+            phase, keyed by ``"read"``, ``"extract"``, and ``"write"``.
+            Only populated for succeeded entities.  Use
+            :meth:`timing_summary` for aggregated statistics rather than
+            reading this directly.
     """
 
     succeeded: dict[str, ExtractionResult] = field(default_factory=dict)
@@ -189,6 +219,10 @@ class GenerationReport:
     success_count: int = 0
     record_count: int = 0
     duration_s: float = 0.0
+    phase_timings: dict[str, list[float]] = field(
+        default_factory=lambda: {"read": [], "extract": [], "write": []},
+        repr=False,
+    )
 
     @property
     def failure_count(self) -> int:
@@ -212,6 +246,43 @@ class GenerationReport:
 
     def __len__(self) -> int:
         return self.total_count
+
+    def timing_summary(self) -> dict[str, dict[str, float]]:
+        """Aggregate timing statistics per pipeline phase.
+
+        Returns p50, p95, max, mean, and total wall-clock seconds for each
+        phase (``"read"``, ``"extract"``, ``"write"``).  Phases with no
+        data are omitted.  Only succeeded entities contribute to timings.
+
+        For batch extraction (``batch_size > 1``), the ``"extract"`` time
+        is the total ``extract_batch`` duration divided by the batch size
+        — a per-entity average, not an individually measured time.
+
+        Returns:
+            Dict mapping phase name to a statistics dict with keys
+            ``p50``, ``p95``, ``max``, ``mean``, ``total`` (all in
+            seconds).  Empty dict if no timing data has been collected.
+
+        Example::
+
+            summary = report.timing_summary()
+            print(summary["read"]["p95"])   # 95th-percentile read time
+            print(summary["write"]["max"])  # slowest single write
+        """
+        result: dict[str, dict[str, float]] = {}
+        for phase, times in self.phase_timings.items():
+            if not times:
+                continue
+            n = len(times)
+            sorted_t = sorted(times)
+            result[phase] = {
+                "p50": sorted_t[int(n * 0.50)],
+                "p95": sorted_t[min(int(n * 0.95), n - 1)],
+                "max": sorted_t[-1],
+                "mean": sum(sorted_t) / n,
+                "total": sum(sorted_t),
+            }
+        return result
 
     def error_summary(self) -> dict[str, list[str]]:
         """Group failed entities by their error message.
@@ -346,7 +417,7 @@ class Pipeline:
 
             if executor is not None:
                 loop = asyncio.get_running_loop()
-                result, errors = await loop.run_in_executor(
+                result, errors, _phase_times = await loop.run_in_executor(
                     executor,
                     _run_entity_in_executor,
                     self.source,
@@ -355,15 +426,23 @@ class Pipeline:
                     entity_ctx,
                 )
             else:
+                _t0 = time.perf_counter()
                 raw = await self.source.read(entity_id=entity_id, context=entity_ctx)
+                _t1 = time.perf_counter()
                 result = await self.feature.extract(raw, entity_ctx, entity_id=entity_id)
+                _t2 = time.perf_counter()
                 errors = await _validate_extraction(self.feature, result)
+                _phase_times = {"read": _t1 - _t0, "extract": _t2 - _t1}
 
             if errors:
                 report.failed[entity_id] = errors
                 return
 
+            _t_write = time.perf_counter()
             await self.store.awrite(self.feature, entity_id, result, context=entity_ctx)
+            _phase_times["write"] = time.perf_counter() - _t_write
+            for _phase, _t in _phase_times.items():
+                report.phase_timings[_phase].append(_t)
             report.success_count += 1
             report.record_count += len(result.records)
             if store_results:
@@ -459,14 +538,18 @@ class Pipeline:
                     ]
                     report.exceptions[entity_id] = slot
                 else:
-                    result, errors = slot
+                    result, errors, _phase_times = slot
                     if errors:
                         report.failed[entity_id] = errors
                     else:
                         try:
+                            _t_write = time.perf_counter()
                             await self.store.awrite(
                                 self.feature, entity_id, result, context=entity_ctx
                             )
+                            _phase_times["write"] = time.perf_counter() - _t_write
+                            for _phase, _t in _phase_times.items():
+                                report.phase_timings[_phase].append(_t)
                             report.success_count += 1
                             report.record_count += len(result.records)
                             if store_results:
@@ -486,36 +569,45 @@ class Pipeline:
             eid: {**context, **context_fn(eid)} if context_fn else context for eid in to_process
         }
 
-        # --- 3. Concurrent reads (return_exceptions preserves per-entity errors) ---
-        raw_results: list[Any] = await asyncio.gather(
-            *[self.source.read(entity_id=eid, context=entity_ctxs[eid]) for eid in to_process],
+        # --- 3. Concurrent reads (timed individually) ---
+        async def _timed_read(eid: str) -> tuple[Any, float]:
+            t0 = time.perf_counter()
+            raw = await self.source.read(entity_id=eid, context=entity_ctxs[eid])
+            return raw, time.perf_counter() - t0
+
+        raw_timed: list[tuple[Any, float] | BaseException] = await asyncio.gather(
+            *[_timed_read(eid) for eid in to_process],
             return_exceptions=True,
         )
 
         # --- 4. Filter read failures ---
         valid_ids: list[str] = []
         valid_raws: list[Any] = []
+        read_times: dict[str, float] = {}
 
-        for entity_id, raw in zip(to_process, raw_results, strict=True):
-            if isinstance(raw, BaseException):
+        for entity_id, res in zip(to_process, raw_timed, strict=True):
+            if isinstance(res, BaseException):
                 report.failed[entity_id] = [
                     f"Unhandled exception in pipeline for feature '{feature_name}', "
-                    f"entity '{entity_id}': {type(raw).__name__}: {raw}"
+                    f"entity '{entity_id}': {type(res).__name__}: {res}"
                 ]
-                report.exceptions[entity_id] = raw
+                report.exceptions[entity_id] = res
                 if on_entity_done is not None:
                     on_entity_done()
                 continue
+            raw, read_time = res
+            read_times[entity_id] = read_time
             valid_ids.append(entity_id)
             valid_raws.append(raw)
 
         if not valid_ids:
             return
 
-        # --- 5. Batch extract ---
+        # --- 5. Batch extract (timed; divide by batch size for per-entity average) ---
         entity_contexts: list[dict[str, Any]] | None = (
             [entity_ctxs[eid] for eid in valid_ids] if context_fn else None
         )
+        _t_extract_0 = time.perf_counter()
         try:
             batch_results: list[
                 ExtractionResult | BaseException
@@ -536,6 +628,9 @@ class Pipeline:
                 if on_entity_done is not None:
                     on_entity_done()
             return
+        _extract_time_each = (
+            (time.perf_counter() - _t_extract_0) / len(valid_ids) if valid_ids else 0.0
+        )
 
         # --- 6. Validate and write — per entity ---
         for entity_id, result in zip(valid_ids, batch_results, strict=True):
@@ -551,9 +646,13 @@ class Pipeline:
                     if errors:
                         report.failed[entity_id] = errors
                     else:
+                        _t_write = time.perf_counter()
                         await self.store.awrite(
                             self.feature, entity_id, result, context=entity_ctxs[entity_id]
                         )
+                        report.phase_timings["read"].append(read_times.get(entity_id, 0.0))
+                        report.phase_timings["extract"].append(_extract_time_each)
+                        report.phase_timings["write"].append(time.perf_counter() - _t_write)
                         report.success_count += 1
                         report.record_count += len(result.records)
                         if store_results:

@@ -911,6 +911,92 @@ def test_report_error_summary_empty():
     assert GenerationReport().error_summary() == {}
 
 
+def test_timing_summary_empty_on_fresh_report():
+    assert GenerationReport().timing_summary() == {}
+
+
+@pytest.mark.asyncio
+async def test_timing_summary_populated_after_generate(df):
+    """After a successful generate(), all three phases have timing data."""
+    pipeline = Pipeline(
+        source=DataFrameSource(df),
+        feature=MeanFeature(),
+        store=MemoryStore(),
+    )
+    report = await pipeline.agenerate(entity_ids=["u1", "u2"])
+
+    summary = report.timing_summary()
+    assert set(summary.keys()) == {"read", "extract", "write"}
+    for phase_stats in summary.values():
+        assert set(phase_stats.keys()) == {"p50", "p95", "max", "mean", "total"}
+        assert phase_stats["p50"] >= 0
+        assert phase_stats["p95"] >= phase_stats["p50"]
+        assert phase_stats["max"] >= phase_stats["p95"]
+
+
+@pytest.mark.asyncio
+async def test_timing_summary_correct_entry_count(df):
+    """phase_timings has one entry per succeeded entity."""
+    pipeline = Pipeline(
+        source=DataFrameSource(df),
+        feature=MeanFeature(),
+        store=MemoryStore(),
+    )
+    report = await pipeline.agenerate(entity_ids=["u1", "u2"])
+
+    assert len(report.phase_timings["read"]) == 2
+    assert len(report.phase_timings["extract"]) == 2
+    assert len(report.phase_timings["write"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_timing_summary_failed_entities_excluded(df):
+    """Failed entities must not contribute to phase_timings."""
+    pipeline = Pipeline(
+        source=DataFrameSource(df),
+        feature=MeanFeature(),
+        store=MemoryStore(),
+    )
+    # u1 succeeds, u_missing fails
+    report = await pipeline.agenerate(entity_ids=["u1", "u_missing"])
+
+    assert len(report.phase_timings["read"]) == 1
+    assert len(report.phase_timings["extract"]) == 1
+    assert len(report.phase_timings["write"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_timing_summary_all_fail_gives_empty(df):
+    """No succeeded entities → timing_summary() returns {}."""
+    pipeline = Pipeline(
+        source=DataFrameSource(df),
+        feature=FailingFeature(),
+        store=MemoryStore(),
+    )
+    report = await pipeline.agenerate(entity_ids=["u1", "u2"])
+
+    assert report.timing_summary() == {}
+
+
+@pytest.mark.asyncio
+async def test_timing_summary_batch_mode(wide_df):
+    """Batch extract path also populates phase_timings for all succeeded entities."""
+    pipeline = Pipeline(
+        source=DataFrameSource(wide_df),
+        feature=MeanFeature(),
+        store=MemoryStore(),
+    )
+    ids = [f"u{i}" for i in range(1, 7)]
+    report = await pipeline.agenerate(entity_ids=ids, batch_size=3)
+
+    assert report.success_count == 6
+    assert len(report.phase_timings["read"]) == 6
+    assert len(report.phase_timings["extract"]) == 6
+    assert len(report.phase_timings["write"]) == 6
+    summary = report.timing_summary()
+    assert set(summary.keys()) == {"read", "extract", "write"}
+
+
 # ---------------------------------------------------------------------------
 # context_fn tests
 # ---------------------------------------------------------------------------
