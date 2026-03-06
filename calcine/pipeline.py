@@ -9,6 +9,8 @@ from concurrent.futures import Executor
 from dataclasses import dataclass, field
 from typing import Any
 
+import pandas as pd
+
 from .extraction import ExtractionResult
 from .features.base import Feature
 from .sources.base import DataSource
@@ -310,26 +312,15 @@ class GenerationReport:
             f"duration={self.duration_s:.2f}s)"
         )
 
-    def to_dataframe(self) -> Any:
+    def to_dataframe(self) -> pd.DataFrame:
         """Export a pandas DataFrame with one row per entity.
-
-        Requires pandas (``pip install calcine[parquet]``).
 
         Columns: ``entity_id``, ``status`` ("succeeded" / "failed" / "skipped"),
         ``record_count`` (int or ``None``), ``error`` (str or ``None``).
 
         Note: succeeded rows are only present when ``store_results=True`` was
         used during ``generate()``.
-
-        Raises:
-            ImportError: If pandas is not installed.
         """
-        try:
-            import pandas as pd
-        except ImportError as err:
-            raise ImportError(
-                "pandas is required for to_dataframe(); install with: pip install calcine[parquet]"
-            ) from err
         rows: list[dict[str, Any]] = []
         for eid, result in self.succeeded.items():
             rows.append(

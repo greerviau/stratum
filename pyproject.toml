@@ -30,19 +30,17 @@ classifiers = [
     "Typing :: Typed",
 ]
 
-# Only numpy is required at runtime.  Everything else is optional.
-dependencies = ["numpy>=1.21"]
+dependencies = ["numpy>=1.21", "pandas>=1.5"]
 
 [project.optional-dependencies]
 http    = ["httpx>=0.24"]
-parquet = ["pandas>=1.5", "pyarrow>=10"]
+parquet = ["pyarrow>=10"]
 dev = [
     "pytest>=7.4",
     "pytest-asyncio>=0.23",
     "ruff>=0.3",
     "mypy>=1.8",
     # Pull in optional deps for testing
-    "pandas>=1.5",
     "pyarrow>=10",
 ]
 
