@@ -42,64 +42,95 @@ pip install "calcine[dev]"           # + test/lint tools
 ## Quick start
 
 ```python
+import asyncio
+import io
+from pathlib import Path
+
+import librosa
+import numpy as np
+import zarr
+
 from calcine import ExtractionResult, Pipeline
 from calcine.features.base import Feature
 from calcine.schema import FeatureSchema, types
 from calcine.sources.base import DataSource
-from calcine.stores import MemoryStore
+from calcine.stores.base import FeatureStore
 
 
-# --- 1. Define your data source (any async I/O: DB, API, S3, …) ---
+# --- 1. Source: read raw audio from disk, one file per recording ---
 
-class UserDBSource(DataSource):
-    async def read(self, entity_id: str, **kwargs) -> dict:
-        return await db.fetch_user(entity_id)  # your async call here
+class AudioFileSource(DataSource):
+    def __init__(self, root: str):
+        self._root = Path(root)
+
+    async def read(self, entity_id: str, **kwargs) -> bytes:
+        path = self._root / f"{entity_id}.wav"
+        return await asyncio.to_thread(path.read_bytes)
 
 
-# --- 2. Define a schema-validated feature ---
+# --- 2. Feature: extract log-mel spectrogram + metadata ---
 
-class UserEngagementFeature(Feature):
+class SpectrogramFeature(Feature):
     schema = FeatureSchema({
-        "spend_tier":  types.Category(categories=["low", "mid", "high", "whale"]),
-        "event_rate":  types.Float64(nullable=False),
-        "total_spend": types.Float64(nullable=False),
+        "spectrogram": types.NDArray(shape=(None, 128), dtype="float32"),
+        "duration_s":  types.Float64(nullable=False),
+        "sample_rate": types.Int64(nullable=False),
     })
 
-    async def extract(self, raw: dict, context: dict, entity_id=None) -> ExtractionResult:
-        spend = raw["total_spend"]
-        if spend < 100:    tier = "low"
-        elif spend < 1000: tier = "mid"
-        elif spend < 3000: tier = "high"
-        else:              tier = "whale"
+    async def extract(self, raw: bytes, context: dict, entity_id=None) -> ExtractionResult:
+        audio, sr = await asyncio.to_thread(librosa.load, io.BytesIO(raw), sr=None)
+        mel = librosa.feature.melspectrogram(y=audio, sr=sr, n_mels=128)
+        log_mel = librosa.power_to_db(mel).T.astype("float32")  # (T, 128)
         return ExtractionResult.of(entity_id, {
-            "spend_tier":  tier,
-            "event_rate":  raw["event_count"] / raw["days_active"],
-            "total_spend": spend,
+            "spectrogram": log_mel,
+            "duration_s":  float(len(audio) / sr),
+            "sample_rate": int(sr),
         })
 
 
-# --- 3. Build and run ---
+# --- 3. Store: write arrays into a Zarr group, ready for training ---
+
+class ZarrStore(FeatureStore):
+    def __init__(self, path: str):
+        self._root = zarr.open_group(path, mode="a")
+
+    async def awrite(self, feature, entity_id, result, **kwargs):
+        for sub_id, record in result.records.items():
+            grp = self._root.require_group(sub_id)
+            grp["spectrogram"] = record["spectrogram"]
+            grp.attrs.update({k: v for k, v in record.items() if k != "spectrogram"})
+
+    async def aread(self, feature, entity_id):
+        grp = self._root[entity_id]
+        return {"spectrogram": grp["spectrogram"][:], **dict(grp.attrs)}
+
+    async def aexists(self, feature, entity_id) -> bool:
+        return entity_id in self._root
+
+    async def adelete(self, feature, entity_id):
+        del self._root[entity_id]
+
+
+# --- 4. Build and run ---
 
 pipeline = Pipeline(
-    source=UserDBSource(),
-    feature=UserEngagementFeature(),
-    store=MemoryStore(),
+    source=AudioFileSource("/data/recordings/"),
+    feature=SpectrogramFeature(),
+    store=ZarrStore("/data/features/spectrograms.zarr"),
 )
 
-# Concurrent reads; failures are isolated per entity
-report = pipeline.generate(entity_ids=user_ids, concurrency=32)
+# Concurrent reads; failures are isolated per recording
+report = pipeline.generate(entity_ids=recording_ids, concurrency=8)
 print(report)
-# GenerationReport(entities=997, records=997, failed=3, skipped=0, duration=1.24s)
+# GenerationReport(entities=2840, records=2840, failed=12, skipped=0, duration=43.7s)
 
 # Identify bottlenecks across read / extract / write phases
 summary = report.timing_summary()
 print(f"p95 read:    {summary['read']['p95']*1000:.1f} ms")
 print(f"p95 extract: {summary['extract']['p95']*1000:.1f} ms")
 
-# Re-run later — already-stored entities are skipped automatically
-pipeline.generate(entity_ids=new_user_ids, overwrite=False)
-
-value = pipeline.retrieve("u42")
+# Re-run on new recordings — already-processed ones are skipped automatically
+pipeline.generate(entity_ids=new_recording_ids, overwrite=False)
 ```
 
 See [`examples/basic_usage.py`](examples/basic_usage.py) for a fully runnable version with a simulated async source, bad-data handling, and incremental generation.
